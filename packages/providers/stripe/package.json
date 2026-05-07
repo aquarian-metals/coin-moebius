@@ -1,0 +1,22 @@
+{
+	"name": "@coin-moebius/stripe",
+	"version": "0.1.0",
+	"type": "module",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": "./dist/index.js",
+		"./server": "./dist/server.js"
+	},
+	"dependencies": {
+		"@stripe/stripe-js": "^4.0.0",
+		"stripe": "^17.4.0"
+	},
+	"scripts": {
+		"build": "tsc"
+	},
+	"devDependencies": {
+		"@coin-moebius/core": "*",
+		"typescript": "~5.8.0"
+	}
+}

@@ -1,0 +1,21 @@
+{
+	"name": "@coin-moebius/server",
+	"version": "0.1.0",
+	"type": "module",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": "./dist/index.js",
+		"./supabase": "./dist/supabase.js"
+	},
+	"scripts": {
+		"build": "tsc"
+	},
+	"dependencies": {
+		"@supabase/supabase-js": "^2.45.0",
+		"@coin-moebius/core": "*"
+	},
+	"devDependencies": {
+		"typescript": "~5.8.0"
+	}
+}

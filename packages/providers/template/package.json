@@ -1,0 +1,17 @@
+{
+	"name": "@coin-moebius/provider-template",
+	"version": "0.1.0",
+	"type": "module",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": "./dist/index.js"
+	},
+	"scripts": {
+		"build": "tsc"
+	},
+	"devDependencies": {
+		"@coin-moebius/core": "*",
+		"typescript": "~5.8.0"
+	}
+}
