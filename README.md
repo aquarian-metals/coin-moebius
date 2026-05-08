@@ -1,151 +1,133 @@
-# Coin Moebius
+# ♾️ Coin Moebius
 
-**A tiny, open-source JavaScript SDK that turns any payment method into a clean black-box “paid” key for static sites.**
+**The headless, zero-UI payment router for static sites.**
 
-Stripe/Authorize.net, Cryptocurrency, gold/silver escrow, barter... all treated identically.  
-No forced UI, no vendor lock-in. Use small serverless endpoints for secure verification (same pattern as Stripe + JAMstack).
+Turn Stripe, Monero, Zano, gold escrow, or literally anything else into a single, boring `onSuccess` callback.
 
----
+Static sites (JAMstack) are fast and cheap. But the second you want to accept money, you're forced to either rent a heavy, locked-in storefront (Gumroad, Payhip) or hand-roll a spaghetti monster of different webhooks for every gateway.
 
-## Why Coin Moebius?
-
-Static/JAMstack sites are fast and cheap, but adding real payments has always meant choosing between:
-
-- Hosted platforms that lock you in (Payhip, Gumroad, etc.)
-- One-off hacks per gateway
-
-**Coin Moebius** is a **plugin-style ecosystem** for payments on Netlify, Vercel, Cloudflare Pages, Astro, etc.
-
-You keep control of your UI and fulfillment logic. The library normalizes the “they paid” signal.
+**Coin Moebius fixes this.** It gives you a WordPress-style plugin ecosystem for static site checkouts. You keep 100% control of your UI and fulfillment logic. We just normalize the *"they paid"* signal.
 
 ---
 
-## Features
+## What makes it magic?
 
-- Small client-side core
-- Pluggable providers as separate packages (`@coin-moebius/stripe`, `@coin-moebius/monero-cryptomus`, …)
-- One standardized `PaymentResult` for every payment method
-- Instant (Stripe) and delayed (crypto) flows via `pending` / `success`
-- Pending UX: poll a tiny `payment-status` endpoint — **never import `@coin-moebius/server` in browser bundles**
-- Single webhook entrypoint pattern with `verify` + registered verifiers
-- Works with Netlify Functions, Vercel, Cloudflare Workers, etc.
+* **Zero Opinion UI:** We don't care what your buy button looks like. Build your own frontend.
+* **One Universal Callback:** Whether they paid with a Visa via Stripe or Monero, your fulfillment code runs exactly the same way.
+* **Tiny Core:** We stripped the heavy stuff out. Only install the providers you actually use.
+* **Safe by Default:** A strict boundary between the browser (`core`) and your serverless webhooks (`server`).
 
 ---
 
-## Monorepo layout
+## Quick Start (in 3 minutes)
 
-- `packages/core` — `createPaymentManager`, types, client `subscribeToStatus` (polls `statusEndpoint`)
-- `packages/server` — `registerVerifier`, `verify`, `createStatusSubscriber`, `createSupabaseStore`
-- `packages/providers/template` — starter provider + script loader
-- `packages/providers/stripe` — Stripe Checkout client + `createStripeVerifier`
-- `packages/providers/monero-cryptomus` — Cryptomus client stub + `createCryptomusVerifier`
-- `examples/static-site-demo` — HTML demo + Netlify function examples
-
----
-
-## Quick start
-
-### 1. Install (workspace / local monorepo)
+Install the core:
 
 ```bash
-npm install
-npm run build
+npm install @coin-moebius/core
+
 ```
 
-### 2. Frontend
+Or if you want to use both Stripe and Cryptomus, you can install both together or separately.
 
 ```bash
-cd examples/static-site-demo
-npm run dev
+npm install @coin-moebius/core @coin-moebius/stripe @coin-moebius/monero-cryptomus
 ```
+
+
+### 1. The Frontend (Browser)
+
+Initialize the manager in your Vite/Next/Astro app. Feed it your providers, and tell it what to do when someone successfully pays.
 
 ```typescript
 import { createPaymentManager } from '@coin-moebius/core';
 import createStripeProvider from '@coin-moebius/stripe';
-import createMoneroCryptomusProvider from '@coin-moebius/monero-cryptomus';
+import createMoneroProvider from '@coin-moebius/monero-cryptomus';
 
 const payments = createPaymentManager({
-	providers: [
-		createStripeProvider({ publishableKey: import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY }),
-		createMoneroCryptomusProvider({
-			apiKey: import.meta.env.VITE_CRYPTOMUS_API_KEY,
-			merchantUuid: import.meta.env.VITE_CRYPTOMUS_MERCHANT_UUID,
-		}),
-	],
+  providers: [
+    createStripeProvider({ publishableKey: import.meta.env.VITE_STRIPE_KEY }),
+    createMoneroProvider({
+      apiKey: import.meta.env.VITE_CRYPTOMUS_KEY,
+      merchantUuid: import.meta.env.VITE_CRYPTOMUS_MERCHANT,
+    }),
+  ],
 });
 
+// The single source of truth for fulfillment
 payments.onSuccess((result) => {
-	console.log('PAID', result);
+  console.log(`PAID with ${result.provider}!`, result);
+  // Unlock the download, fire the confetti, update the DB.
 });
+
 ```
 
-### 3. Trigger from your own UI
+Trigger it from your own beautiful, custom UI:
 
 ```typescript
-payments.initiate({
-	productId: 'ebook-42',
-	amount: 19.99,
-	currency: 'USD',
-	metadata: { email: buyerEmail },
-});
+// For Fiat
+document.getElementById('buy-stripe').onclick = () => {
+  payments.initiate({ productId: 'ebook-42', amount: 19.99, currency: 'USD' });
+};
 
-payments.initiate({
-	productId: 'ebook-42',
-	amount: 0.12,
-	currency: 'XMR',
-	providerId: 'monero-cryptomus',
-});
+// For Crypto
+document.getElementById('buy-crypto').onclick = () => {
+  payments.initiate({ productId: 'ebook-42', amount: 0.12, currency: 'XMR', providerId: 'monero-cryptomus' });
+};
+
 ```
 
-### Required serverless examples
+### 2. The Backend (Serverless Webhooks)
 
-See `examples/static-site-demo/netlify/functions/`:
+You only need a single webhook to handle every provider. Coin Moebius swallows the messy gateway payloads and spits out our clean, standardized `PaymentResult`.
 
-- `create-stripe-session` — Stripe Checkout session (Stripe only)
-- `payment-webhook` — verify + upsert store
-- `payment-status` — public read for `subscribeToStatus` polling
+```javascript
+// e.g., netlify/functions/payment-webhook.js
+import { verify, registerVerifier } from '@coin-moebius/server';
+import { createStripeVerifier } from '@coin-moebius/stripe/server';
+import { createCryptomusVerifier } from '@coin-moebius/monero-cryptomus/server';
 
-Supabase DDL: `examples/static-site-demo/supabase-schema.sql`.
+// Register verifiers once
+registerVerifier('stripe', createStripeVerifier({ endpointSecret: process.env.STRIPE_SECRET }));
+registerVerifier('monero-cryptomus', createCryptomusVerifier({ /* secrets */ }));
 
----
+export default async function handler(req) {
+  // Boom. Verified, standardized payload.
+  const result = await verify(req.body, req.headers); 
+  
+  if (result.status === 'success') {
+     // Fulfill the order
+  }
+  return { statusCode: 200 };
+}
 
-## Architecture
-
-Your custom UI  
-→ `payments.initiate()` → provider  
-→ gateway → your webhook → `verify()` → `PaymentResult`  
-→ your fulfillment code (same shape for every provider)
-
----
-
-## Adding a new provider
-
-1. Copy `packages/providers/template`
-2. Implement client `initiate()` and server verifier (export from `server.ts`)
-3. `npm publish`
-
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+```
 
 ---
 
-## Roadmap (from original draft)
+## The Architecture
 
-- Core + Stripe + Monero-Cryptomus (this repo)
-- Supabase Realtime subscriber (optional alternative to polling)
-- Community providers (Zano, Lightning, gold-escrow)
-- CLI to scaffold providers
+```text
+Your UI → initiate() → Provider → User Pays → Webhook → verify() → SUCCESS
 
----
+```
 
-## Implementation notes
-
-- Import server-only verifiers from `@coin-moebius/stripe/server` and `@coin-moebius/monero-cryptomus/server`, not from the browser bundle entrypoints (keeps `node:crypto` out of Vite/webpack clients).
-- The Cryptomus client snippet signs requests per Cryptomus merchant docs; the placeholder sign field must be replaced before production use.
+For delayed payments (like Monero block confirmations), the SDK handles the pending gap automatically. Just point `subscribeToStatus` at a tiny serverless endpoint, and it polls until the webhook confirms the cash is in the bag. Check out the `examples/static-site-demo` folder for the full copy-paste setup.
 
 ---
 
-## License
+## 🚨 The One Big Rule (Gotcha) 🚨
 
-MIT © 2026
+**Never import `@coin-moebius/server` into your browser bundle.** The server package contains Node crypto dependencies for checking signatures. Keep `core` in the browser, and `server` in your Netlify/Vercel/etc functions. If your Vite build explodes, you probably imported a server verifier on the frontend.
 
-Made for indie creators who want static sites to accept money — any way they want.
+---
+
+## Build the Ecosystem
+
+Gateway APIs change constantly. We maintain the core, Stripe, and Cryptomus reference implementations so you have a gold standard to copy.
+
+We expect the community to build the rest. Want to accept Solana, Lightning, or Zano?
+
+1. Copy `packages/providers/template`.
+2. Write a frontend `initiate()` and a backend `server.ts` verifier.
+3. Publish it to npm as `@your-name/coin-moebius-zano`.

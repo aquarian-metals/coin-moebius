@@ -9,7 +9,7 @@ export default function createStripeProvider(config: StripeProviderConfig): Paym
 	const provider: PaymentProvider = {
 		id: 'stripe',
 		name: 'Stripe',
-		icon: 'https://upload.wikimedia.org/wikipedia/commons/thumb/f/f2/Stripe_Logo%2C_revised_2016.svg/2560px-Stripe_Logo%2C_revised_2016.svg.png',
+		icon: 'https://upload.wikimedia.org/wikipedia/commons/b/ba/Stripe_Logo%2C_revised_2016.svg',
 
 		async initiate(
 			options: InitiateOptions,
