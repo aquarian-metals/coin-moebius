@@ -1,21 +1,56 @@
 {
-	"name": "@coin-moebius/server",
-	"version": "0.1.0",
+	"name": "@aquarianmetals/coin-moebius-server",
+	"version": "0.1.0-beta.1",
+	"description": "Server-side webhook verification + payment status helpers for Coin Moebius. Node / serverless only — never import in browser bundles.",
+	"keywords": [
+		"payments",
+		"webhook",
+		"webhook-verification",
+		"serverless",
+		"supabase",
+		"coin-moebius"
+	],
+	"author": "aquarian-metals",
+	"license": "MIT",
+	"homepage": "https://github.com/aquarian-metals/coin-moebius#readme",
+	"bugs": {
+		"url": "https://github.com/aquarian-metals/coin-moebius/issues"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/aquarian-metals/coin-moebius.git",
+		"directory": "packages/server"
+	},
 	"type": "module",
 	"main": "./dist/index.js",
 	"types": "./dist/index.d.ts",
+	"sideEffects": false,
+	"files": [
+		"dist"
+	],
 	"exports": {
-		".": "./dist/index.js",
-		"./supabase": "./dist/supabase.js"
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		},
+		"./supabase": {
+			"types": "./dist/supabase.d.ts",
+			"import": "./dist/supabase.js"
+		},
+		"./package.json": "./package.json"
 	},
 	"scripts": {
-		"build": "tsc"
+		"build": "tsc",
+		"prepublishOnly": "npm run build"
 	},
 	"dependencies": {
-		"@supabase/supabase-js": "^2.45.0",
-		"@coin-moebius/core": "*"
+		"@aquarianmetals/coin-moebius-core": "^0.1.0-beta.1",
+		"@supabase/supabase-js": "^2.45.0"
 	},
 	"devDependencies": {
 		"typescript": "~5.8.0"
+	},
+	"publishConfig": {
+		"access": "public"
 	}
 }

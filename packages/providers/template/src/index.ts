@@ -1,4 +1,4 @@
-import type { PaymentProvider, InitiateOptions, PaymentResult } from '@coin-moebius/core';
+import type { PaymentProvider, InitiateOptions, PaymentResult } from '@aquarianmetals/coin-moebius-core';
 import { ensureScriptLoaded } from './script-loader';
 
 export interface MyProviderConfig {

@@ -1,4 +1,4 @@
-import { createSupabaseStore } from '@coin-moebius/server';
+import { createSupabaseStore } from '@aquarianmetals/coin-moebius-server';
 
 const store = createSupabaseStore({
 	supabaseUrl: process.env.SUPABASE_URL ?? '',

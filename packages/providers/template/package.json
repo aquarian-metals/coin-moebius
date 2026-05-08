@@ -1,17 +1,50 @@
 {
-	"name": "@coin-moebius/provider-template",
-	"version": "0.1.0",
+	"name": "@aquarianmetals/coin-moebius-provider-template",
+	"version": "0.1.0-beta.1",
+	"description": "Starter template for building a Coin Moebius payment provider. Copy this folder, rename, implement initiate() and an optional ./server verifier.",
+	"keywords": [
+		"payments",
+		"template",
+		"provider-template",
+		"coin-moebius"
+	],
+	"author": "aquarian-metals",
+	"license": "MIT",
+	"homepage": "https://github.com/aquarian-metals/coin-moebius#readme",
+	"bugs": {
+		"url": "https://github.com/aquarian-metals/coin-moebius/issues"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/aquarian-metals/coin-moebius.git",
+		"directory": "packages/providers/template"
+	},
 	"type": "module",
 	"main": "./dist/index.js",
 	"types": "./dist/index.d.ts",
+	"sideEffects": false,
+	"files": [
+		"dist"
+	],
 	"exports": {
-		".": "./dist/index.js"
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		},
+		"./package.json": "./package.json"
 	},
 	"scripts": {
-		"build": "tsc"
+		"build": "tsc",
+		"prepublishOnly": "npm run build"
+	},
+	"peerDependencies": {
+		"@aquarianmetals/coin-moebius-core": "^0.1.0-beta.1"
 	},
 	"devDependencies": {
-		"@coin-moebius/core": "*",
+		"@aquarianmetals/coin-moebius-core": "^0.1.0-beta.1",
 		"typescript": "~5.8.0"
+	},
+	"publishConfig": {
+		"access": "public"
 	}
 }

@@ -8,6 +8,6 @@ Environment variables for functions (Netlify / hosting dashboard):
 - `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`
 - `CRYPTOMUS_MERCHANT_UUID`, `CRYPTOMUS_PAYMENT_API_KEY`
 
-Frontend (Vite): `VITE_STRIPE_PUBLISHABLE_KEY`, `VITE_CRYPTOMUS_*` as in `main.ts`.
+Frontend (Vite): `VITE_STRIPE_PUBLISHABLE_KEY`. The Cryptomus client provider no longer takes any keys — its serverless function (`create-cryptomus-payment`) holds the merchant UUID + payment API key.
 
-**Do not import `@coin-moebius/server` from browser code** — use `subscribeToStatus` + `payment-status` only.
+**Do not import `@aquarianmetals/coin-moebius-server` or any `@aquarianmetals/coin-moebius-*/server` entry from browser code** — use `subscribeToStatus` + `payment-status` only.

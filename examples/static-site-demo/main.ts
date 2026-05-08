@@ -1,14 +1,11 @@
-import { createPaymentManager } from '@coin-moebius/core';
-import createStripeProvider from '@coin-moebius/stripe';
-import createMoneroCryptomusProvider from '@coin-moebius/monero-cryptomus';
+import createMoneroCryptomusProvider from '@aquarianmetals/coin-moebius-monero-cryptomus';
+import { createPaymentManager } from '@aquarianmetals/coin-moebius';
+import createStripeProvider from '@aquarianmetals/coin-moebius-stripe';
 
 const payments = createPaymentManager({
 	providers: [
 		createStripeProvider({ publishableKey: import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY }),
-		createMoneroCryptomusProvider({
-			apiKey: import.meta.env.VITE_CRYPTOMUS_API_KEY,
-			merchantUuid: import.meta.env.VITE_CRYPTOMUS_MERCHANT_UUID,
-		}),
+		createMoneroCryptomusProvider(),
 	],
 });
 

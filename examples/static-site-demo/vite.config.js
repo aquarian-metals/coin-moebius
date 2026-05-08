@@ -12,11 +12,21 @@ export default defineConfig({
 	},
 	resolve: {
 		alias: {
-			'@coin-moebius/core': path.join(repoRoot, 'packages/core/src/index.ts'),
-			'@coin-moebius/stripe': path.join(repoRoot, 'packages/providers/stripe/src/index.ts'),
-			'@coin-moebius/monero-cryptomus': path.join(
+			'@aquarianmetals/coin-moebius': path.join(
+				repoRoot,
+				'packages/coin-moebius/src/index.ts'
+			),
+			'@aquarianmetals/coin-moebius-core': path.join(
+				repoRoot,
+				'packages/core/src/index.ts'
+			),
+			'@aquarianmetals/coin-moebius-monero-cryptomus': path.join(
 				repoRoot,
 				'packages/providers/monero-cryptomus/src/index.ts'
+			),
+			'@aquarianmetals/coin-moebius-stripe': path.join(
+				repoRoot,
+				'packages/providers/stripe/src/index.ts'
 			),
 		},
 	},

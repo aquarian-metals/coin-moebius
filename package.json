@@ -2,6 +2,7 @@
 	"name": "coin-moebius",
 	"private": true,
 	"workspaces": [
+		"packages/coin-moebius",
 		"packages/core",
 		"packages/server",
 		"packages/providers/template",
@@ -10,9 +11,12 @@
 		"examples/static-site-demo"
 	],
 	"scripts": {
-		"build": "npm run build --workspaces --if-present"
+		"build": "npm run build --workspaces --if-present",
+		"test": "vitest run",
+		"test:watch": "vitest"
 	},
 	"devDependencies": {
-		"typescript": "~5.8.0"
+		"typescript": "~5.8.0",
+		"vitest": "^2.1.9"
 	}
 }

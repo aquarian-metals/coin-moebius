@@ -1,11 +1,29 @@
-import type { PaymentProvider, InitiateOptions, PaymentResult } from '@coin-moebius/core';
+import type { PaymentProvider, InitiateOptions, PaymentResult } from '@aquarianmetals/coin-moebius-core';
 
 export interface MoneroCryptomusConfig {
-	apiKey: string;
-	merchantUuid: string;
+	/**
+	 * Endpoint on your own backend that creates the Cryptomus payment.
+	 * Must hold the `paymentApiKey` server-side and call `createCryptomusCreator`
+	 * (from `@aquarianmetals/coin-moebius-monero-cryptomus/server`) — never expose
+	 * the API key to the browser.
+	 *
+	 * Defaults to `/.netlify/functions/create-cryptomus-payment`.
+	 */
+	createEndpoint?: string;
 }
 
-export default function createMoneroCryptomusProvider(config: MoneroCryptomusConfig): PaymentProvider {
+interface CreateCryptomusPaymentResponse {
+	uuid: string;
+	address: string;
+	qr?: string;
+	amount?: string;
+}
+
+export default function createMoneroCryptomusProvider(
+	config: MoneroCryptomusConfig = {}
+): PaymentProvider {
+	const endpoint = config.createEndpoint ?? '/.netlify/functions/create-cryptomus-payment';
+
 	const provider: PaymentProvider = {
 		id: 'monero-cryptomus',
 		name: 'Monero (via Cryptomus)',
@@ -20,46 +38,45 @@ export default function createMoneroCryptomusProvider(config: MoneroCryptomusCon
 			}
 		) {
 			try {
-				const response = await fetch('https://api.cryptomus.com/v1/payment', {
+				const response = await fetch(endpoint, {
 					method: 'POST',
-					headers: {
-						merchant: config.merchantUuid,
-						/* compute HMAC signature – see Cryptomus docs */
-						sign: '',
-						'Content-Type': 'application/json',
-					},
+					headers: { 'Content-Type': 'application/json' },
 					body: JSON.stringify({
-						amount: options.amount.toString(),
-						currency: 'XMR',
-						order_id: `${options.productId}-${Date.now()}`,
-						url_callback: `${window.location.origin}/.netlify/functions/payment-webhook`,
-						url_return: `${window.location.origin}/success?paymentId=PLACEHOLDER`,
+						productId: options.productId,
+						amount: options.amount,
+						metadata: options.metadata ?? {},
 					}),
 				});
 
-				const data = (await response.json()) as {
-					result?: { address?: string; uuid?: string; order_id?: string; qr?: string; amount?: string };
-				};
+				if (!response.ok) {
+					throw new Error(
+						`coin-moebius/monero-cryptomus: create endpoint returned ${response.status}`
+					);
+				}
 
-				if (!data.result?.address) throw new Error('Failed to create Monero payment');
+				const data = (await response.json()) as CreateCryptomusPaymentResponse;
 
-				const result: PaymentResult = {
+				if (!data?.uuid || !data?.address) {
+					throw new Error(
+						'coin-moebius/monero-cryptomus: create endpoint did not return uuid + address'
+					);
+				}
+
+				callbacks.onPending?.({
 					status: 'pending',
-					paymentId: data.result.uuid || data.result.order_id || '',
+					paymentId: data.uuid,
 					provider: provider.id,
 					amount: options.amount,
 					currency: 'XMR',
 					metadata: {
-						...(options.metadata || {}),
-						address: data.result.address,
-						qr: data.result.qr,
-						amountXMR: data.result.amount,
+						...(options.metadata ?? {}),
+						address: data.address,
+						qr: data.qr,
+						amountXMR: data.amount,
 					},
 					timestamp: Date.now(),
 					raw: data,
-				};
-
-				callbacks.onPending?.(result);
+				});
 			} catch (err) {
 				callbacks.onError(err instanceof Error ? err : new Error(String(err)));
 			}

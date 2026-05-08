@@ -1,22 +1,64 @@
 {
-	"name": "@coin-moebius/stripe",
-	"version": "0.1.0",
+	"name": "@aquarianmetals/coin-moebius-stripe",
+	"version": "0.1.0-beta.1",
+	"description": "Stripe provider for Coin Moebius — browser checkout entry plus a server-only webhook verifier under the ./server subpath.",
+	"keywords": [
+		"payments",
+		"stripe",
+		"checkout",
+		"webhook",
+		"coin-moebius"
+	],
+	"author": "aquarian-metals",
+	"license": "MIT",
+	"homepage": "https://github.com/aquarian-metals/coin-moebius#readme",
+	"bugs": {
+		"url": "https://github.com/aquarian-metals/coin-moebius/issues"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/aquarian-metals/coin-moebius.git",
+		"directory": "packages/providers/stripe"
+	},
 	"type": "module",
 	"main": "./dist/index.js",
 	"types": "./dist/index.d.ts",
+	"sideEffects": false,
+	"files": [
+		"dist"
+	],
 	"exports": {
-		".": "./dist/index.js",
-		"./server": "./dist/server.js"
-	},
-	"dependencies": {
-		"@stripe/stripe-js": "^4.0.0",
-		"stripe": "^17.4.0"
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		},
+		"./server": {
+			"types": "./dist/server.d.ts",
+			"import": "./dist/server.js"
+		},
+		"./package.json": "./package.json"
 	},
 	"scripts": {
-		"build": "tsc"
+		"build": "tsc",
+		"prepublishOnly": "npm run build"
+	},
+	"dependencies": {
+		"@aquarianmetals/coin-moebius-core": "^0.1.0-beta.1",
+		"@stripe/stripe-js": "^4.0.0"
+	},
+	"peerDependencies": {
+		"stripe": "^17.4.0"
+	},
+	"peerDependenciesMeta": {
+		"stripe": {
+			"optional": true
+		}
 	},
 	"devDependencies": {
-		"@coin-moebius/core": "*",
+		"stripe": "^17.4.0",
 		"typescript": "~5.8.0"
+	},
+	"publishConfig": {
+		"access": "public"
 	}
 }

@@ -1,11 +1,20 @@
-import type { PaymentProvider, InitiateOptions, PaymentResult } from '@coin-moebius/core';
+import type { PaymentProvider, InitiateOptions, PaymentResult } from '@aquarianmetals/coin-moebius-core';
 import { loadStripe } from '@stripe/stripe-js';
 
 export interface StripeProviderConfig {
 	publishableKey: string;
+	/**
+	 * Endpoint on your own backend that creates a Stripe Checkout session and
+	 * returns `{ sessionId }`. Defaults to `/.netlify/functions/create-stripe-session`.
+	 *
+	 * Your secret key must stay server-side — never ship it to the browser.
+	 */
+	sessionEndpoint?: string;
 }
 
 export default function createStripeProvider(config: StripeProviderConfig): PaymentProvider {
+	const sessionEndpoint = config.sessionEndpoint ?? '/.netlify/functions/create-stripe-session';
+
 	const provider: PaymentProvider = {
 		id: 'stripe',
 		name: 'Stripe',
@@ -23,7 +32,7 @@ export default function createStripeProvider(config: StripeProviderConfig): Paym
 				const stripe = await loadStripe(config.publishableKey);
 				if (!stripe) throw new Error('Failed to load Stripe.js');
 
-				const response = await fetch('/.netlify/functions/create-stripe-session', {
+				const response = await fetch(sessionEndpoint, {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
 					body: JSON.stringify({
@@ -34,7 +43,15 @@ export default function createStripeProvider(config: StripeProviderConfig): Paym
 					}),
 				});
 
+				if (!response.ok) {
+					throw new Error(`coin-moebius/stripe: session endpoint returned ${response.status}`);
+				}
+
 				const { sessionId } = (await response.json()) as { sessionId: string };
+
+				if (!sessionId) {
+					throw new Error('coin-moebius/stripe: session endpoint did not return sessionId');
+				}
 
 				const { error } = await stripe.redirectToCheckout({ sessionId });
 

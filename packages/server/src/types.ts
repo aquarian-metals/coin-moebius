@@ -1,4 +1,4 @@
-import type { PaymentResult } from '@coin-moebius/core';
+import type { PaymentResult } from '@aquarianmetals/coin-moebius-core';
 
 export interface PaymentRecord extends PaymentResult {
 	confirmations?: number;

@@ -21,36 +21,62 @@ Static sites (JAMstack) are fast and cheap. But the second you want to accept mo
 
 ## Quick Start (in 3 minutes)
 
-Install the core:
+### Install (browser)
+
+Install **core** (same API whether you use the short name or the explicit package; pick one):
 
 ```bash
-npm install @coin-moebius/core
-
+npm install @aquarianmetals/coin-moebius
 ```
 
-Or if you want to use both Stripe and Cryptomus, you can install both together or separately.
+That only installs the router core—**no** Stripe, Cryptomus, or server webhook code.
+
+In your own `package.json`, use a semver range (for example `^0.1.0-beta.1` while this line is in beta) instead of `*`, so installs stay predictable.
+
+Add **only the providers** you need, for example Stripe on the client:
 
 ```bash
-npm install @coin-moebius/core @coin-moebius/stripe @coin-moebius/monero-cryptomus
+npm install @aquarianmetals/coin-moebius-stripe
 ```
 
+Or install core by its explicit name plus a provider:
+
+```bash
+npm install @aquarianmetals/coin-moebius-core @aquarianmetals/coin-moebius-stripe
+```
+
+### Install (server / serverless functions)
+
+> ⚠️ **Browser bundles must not include any of these.** The `-server` package and every provider's `./server` subpath import Node built-ins (`crypto`, etc.) and will break Vite/Rollup if they end up on the client. Install and import them **only** inside your serverless functions or Node project.
+
+```bash
+npm install @aquarianmetals/coin-moebius-server
+```
+
+For each provider whose webhooks you verify, you'll already have its package installed from the browser side — the same package exposes a `./server` entry. A few providers also need their official server SDK installed alongside:
+
+```bash
+npm install stripe   # only if you verify Stripe webhooks
+```
+
+Cryptomus has no separate server SDK; the verifier uses Node's built-in `crypto`.
 
 ### 1. The Frontend (Browser)
 
 Initialize the manager in your Vite/Next/Astro app. Feed it your providers, and tell it what to do when someone successfully pays.
 
 ```typescript
-import { createPaymentManager } from '@coin-moebius/core';
-import createStripeProvider from '@coin-moebius/stripe';
-import createMoneroProvider from '@coin-moebius/monero-cryptomus';
+import createMoneroCryptomusProvider from '@aquarianmetals/coin-moebius-monero-cryptomus';
+import { createPaymentManager } from '@aquarianmetals/coin-moebius';
+import createStripeProvider from '@aquarianmetals/coin-moebius-stripe';
 
 const payments = createPaymentManager({
   providers: [
     createStripeProvider({ publishableKey: import.meta.env.VITE_STRIPE_KEY }),
-    createMoneroProvider({
-      apiKey: import.meta.env.VITE_CRYPTOMUS_KEY,
-      merchantUuid: import.meta.env.VITE_CRYPTOMUS_MERCHANT,
-    }),
+    // Cryptomus' API key holds spend authority on your merchant account, so it
+    // can never live in the browser. The provider posts to a serverless function
+    // you control (default: /.netlify/functions/create-cryptomus-payment) — see §2.
+    createMoneroCryptomusProvider(),
   ],
 });
 
@@ -79,29 +105,54 @@ document.getElementById('buy-crypto').onclick = () => {
 
 ### 2. The Backend (Serverless Webhooks)
 
-You only need a single webhook to handle every provider. Coin Moebius swallows the messy gateway payloads and spits out our clean, standardized `PaymentResult`.
+You need two tiny serverless functions: one **webhook** that any provider can POST to, and one **create-payment** function per provider that holds API keys (Stripe-style hosted checkout, or Cryptomus's signed create call). The browser never sees your secrets.
 
 ```javascript
 // e.g., netlify/functions/payment-webhook.js
-import { verify, registerVerifier } from '@coin-moebius/server';
-import { createStripeVerifier } from '@coin-moebius/stripe/server';
-import { createCryptomusVerifier } from '@coin-moebius/monero-cryptomus/server';
+import { verify, registerVerifier } from '@aquarianmetals/coin-moebius-server';
+import { createStripeVerifier } from '@aquarianmetals/coin-moebius-stripe/server';
+import { createCryptomusVerifier } from '@aquarianmetals/coin-moebius-monero-cryptomus/server';
 
 // Register verifiers once
-registerVerifier('stripe', createStripeVerifier({ endpointSecret: process.env.STRIPE_SECRET }));
-registerVerifier('monero-cryptomus', createCryptomusVerifier({ /* secrets */ }));
+registerVerifier('stripe', createStripeVerifier({ endpointSecret: process.env.STRIPE_WEBHOOK_SECRET }));
+registerVerifier(
+  'monero-cryptomus',
+  createCryptomusVerifier({
+    merchantUuid: process.env.CRYPTOMUS_MERCHANT_UUID,
+    paymentApiKey: process.env.CRYPTOMUS_PAYMENT_API_KEY,
+  })
+);
 
 export default async function handler(req) {
   // Boom. Verified, standardized payload.
-  const result = await verify(req.body, req.headers); 
-  
+  const result = await verify(req.body, req.headers);
+
   if (result.status === 'success') {
      // Fulfill the order
   }
   return { statusCode: 200 };
 }
-
 ```
+
+```javascript
+// e.g., netlify/functions/create-cryptomus-payment.js
+import { createCryptomusCreator } from '@aquarianmetals/coin-moebius-monero-cryptomus/server';
+
+const create = createCryptomusCreator({
+  merchantUuid: process.env.CRYPTOMUS_MERCHANT_UUID,
+  paymentApiKey: process.env.CRYPTOMUS_PAYMENT_API_KEY,
+  callbackUrl: `${process.env.URL}/.netlify/functions/payment-webhook`,
+  returnUrl: `${process.env.URL}/success`,
+});
+
+export default async function handler(req) {
+  const { productId, amount, metadata } = JSON.parse(req.body);
+  const result = await create({ productId, amount, metadata });
+  return { statusCode: 200, body: JSON.stringify(result) };
+}
+```
+
+Stripe has its own equivalent (`create-stripe-session`) that you'd write against the official Stripe SDK — see `examples/static-site-demo/netlify/functions/create-stripe-session.js`.
 
 ---
 
@@ -118,7 +169,7 @@ For delayed payments (like Monero block confirmations), the SDK handles the pend
 
 ## 🚨 CAUTION: Dragons Ahead 🚨
 
-**Never import `@coin-moebius/server` into your browser bundle.** The server package contains Node crypto dependencies for checking signatures. Keep `core` in the browser, and `server` in your Netlify/Vercel/etc functions. If your Vite build explodes, you probably imported a server verifier on the frontend.
+**Never import `@aquarianmetals/coin-moebius-server` or any provider’s `./server` entry (for example `@aquarianmetals/coin-moebius-stripe/server`) into your browser bundle.** Those modules are for Node / serverless signature verification. In the browser, import **only** `@aquarianmetals/coin-moebius` (core) and the **non-**`server` entry of each provider package you installed. If your Vite build fails with missing Node built-ins, you imported webhook code on the client—move it to your functions API only.
 
 ---
 

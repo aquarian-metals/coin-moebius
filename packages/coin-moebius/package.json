@@ -1,15 +1,17 @@
 {
-	"name": "@aquarianmetals/coin-moebius-core",
+	"name": "@aquarianmetals/coin-moebius",
 	"version": "0.1.0-beta.1",
-	"description": "Headless payment router core for Coin Moebius — types, manager, and status polling. Browser-safe.",
+	"description": "Headless payment router for static sites — friendly install name. Re-exports @aquarianmetals/coin-moebius-core.",
 	"keywords": [
 		"payments",
 		"payment",
-		"payment-router",
+		"stripe",
+		"monero",
+		"cryptomus",
 		"jamstack",
 		"static-site",
-		"headless",
-		"coin-moebius"
+		"webhook",
+		"headless"
 	],
 	"author": "aquarian-metals",
 	"license": "MIT",
@@ -20,7 +22,7 @@
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/aquarian-metals/coin-moebius.git",
-		"directory": "packages/core"
+		"directory": "packages/coin-moebius"
 	},
 	"type": "module",
 	"main": "./dist/index.js",
@@ -39,6 +41,9 @@
 	"scripts": {
 		"build": "tsc",
 		"prepublishOnly": "npm run build"
+	},
+	"dependencies": {
+		"@aquarianmetals/coin-moebius-core": "^0.1.0-beta.1"
 	},
 	"devDependencies": {
 		"typescript": "~5.8.0"
