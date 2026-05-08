@@ -1,6 +1,6 @@
-import { verify, registerVerifier, createSupabaseStore } from '@aquarianmetals/coin-moebius-server';
-import { createStripeVerifier } from '@aquarianmetals/coin-moebius-stripe/server';
-import { createCryptomusVerifier } from '@aquarianmetals/coin-moebius-monero-cryptomus/server';
+import { verify, registerVerifier, createSupabaseStore } from '@aquarian-metals/coin-moebius-server';
+import { createStripeVerifier } from '@aquarian-metals/coin-moebius-stripe/server';
+import { createCryptomusVerifier } from '@aquarian-metals/coin-moebius-monero-cryptomus/server';
 
 const store = createSupabaseStore({
 	supabaseUrl: process.env.SUPABASE_URL ?? '',

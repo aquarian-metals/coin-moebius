@@ -1,6 +1,6 @@
-import createMoneroCryptomusProvider from '@aquarianmetals/coin-moebius-monero-cryptomus';
-import { createPaymentManager } from '@aquarianmetals/coin-moebius';
-import createStripeProvider from '@aquarianmetals/coin-moebius-stripe';
+import createMoneroCryptomusProvider from '@aquarian-metals/coin-moebius-monero-cryptomus';
+import { createPaymentManager } from '@aquarian-metals/coin-moebius';
+import createStripeProvider from '@aquarian-metals/coin-moebius-stripe';
 
 const payments = createPaymentManager({
 	providers: [

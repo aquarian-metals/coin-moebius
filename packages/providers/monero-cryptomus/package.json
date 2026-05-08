@@ -1,5 +1,5 @@
 {
-	"name": "@aquarianmetals/coin-moebius-monero-cryptomus",
+	"name": "@aquarian-metals/coin-moebius-monero-cryptomus",
 	"version": "0.1.0-beta.1",
 	"description": "Monero (via Cryptomus) provider for Coin Moebius — browser initiate entry plus a server-only webhook verifier under the ./server subpath.",
 	"keywords": [
@@ -41,11 +41,15 @@
 		"./package.json": "./package.json"
 	},
 	"scripts": {
-		"build": "tsc",
+		"clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+		"build": "npm run clean && tsc",
 		"prepublishOnly": "npm run build"
 	},
+	"engines": {
+		"node": ">=18"
+	},
 	"dependencies": {
-		"@aquarianmetals/coin-moebius-core": "^0.1.0-beta.1"
+		"@aquarian-metals/coin-moebius-core": "^0.1.0-beta.1"
 	},
 	"devDependencies": {
 		"typescript": "~5.8.0"

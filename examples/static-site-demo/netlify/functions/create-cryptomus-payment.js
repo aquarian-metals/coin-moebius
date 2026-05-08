@@ -1,4 +1,4 @@
-import { createCryptomusCreator } from '@aquarianmetals/coin-moebius-monero-cryptomus/server';
+import { createCryptomusCreator } from '@aquarian-metals/coin-moebius-monero-cryptomus/server';
 
 const siteUrl = process.env.URL ?? 'http://localhost:8888';
 

@@ -26,7 +26,7 @@ Static sites (JAMstack) are fast and cheap. But the second you want to accept mo
 Install **core** (same API whether you use the short name or the explicit package; pick one):
 
 ```bash
-npm install @aquarianmetals/coin-moebius
+npm install @aquarian-metals/coin-moebius
 ```
 
 That only installs the router core—**no** Stripe, Cryptomus, or server webhook code.
@@ -36,13 +36,13 @@ In your own `package.json`, use a semver range (for example `^0.1.0-beta.1` whil
 Add **only the providers** you need, for example Stripe on the client:
 
 ```bash
-npm install @aquarianmetals/coin-moebius-stripe
+npm install @aquarian-metals/coin-moebius-stripe
 ```
 
 Or install core by its explicit name plus a provider:
 
 ```bash
-npm install @aquarianmetals/coin-moebius-core @aquarianmetals/coin-moebius-stripe
+npm install @aquarian-metals/coin-moebius-core @aquarian-metals/coin-moebius-stripe
 ```
 
 ### Install (server / serverless functions)
@@ -50,7 +50,7 @@ npm install @aquarianmetals/coin-moebius-core @aquarianmetals/coin-moebius-strip
 > ⚠️ **Browser bundles must not include any of these.** The `-server` package and every provider's `./server` subpath import Node built-ins (`crypto`, etc.) and will break Vite/Rollup if they end up on the client. Install and import them **only** inside your serverless functions or Node project.
 
 ```bash
-npm install @aquarianmetals/coin-moebius-server
+npm install @aquarian-metals/coin-moebius-server
 ```
 
 For each provider whose webhooks you verify, you'll already have its package installed from the browser side — the same package exposes a `./server` entry. A few providers also need their official server SDK installed alongside:
@@ -66,9 +66,9 @@ Cryptomus has no separate server SDK; the verifier uses Node's built-in `crypto`
 Initialize the manager in your Vite/Next/Astro app. Feed it your providers, and tell it what to do when someone successfully pays.
 
 ```typescript
-import createMoneroCryptomusProvider from '@aquarianmetals/coin-moebius-monero-cryptomus';
-import { createPaymentManager } from '@aquarianmetals/coin-moebius';
-import createStripeProvider from '@aquarianmetals/coin-moebius-stripe';
+import createMoneroCryptomusProvider from '@aquarian-metals/coin-moebius-monero-cryptomus';
+import { createPaymentManager } from '@aquarian-metals/coin-moebius';
+import createStripeProvider from '@aquarian-metals/coin-moebius-stripe';
 
 const payments = createPaymentManager({
   providers: [
@@ -109,9 +109,9 @@ You need two tiny serverless functions: one **webhook** that any provider can PO
 
 ```javascript
 // e.g., netlify/functions/payment-webhook.js
-import { verify, registerVerifier } from '@aquarianmetals/coin-moebius-server';
-import { createStripeVerifier } from '@aquarianmetals/coin-moebius-stripe/server';
-import { createCryptomusVerifier } from '@aquarianmetals/coin-moebius-monero-cryptomus/server';
+import { verify, registerVerifier } from '@aquarian-metals/coin-moebius-server';
+import { createStripeVerifier } from '@aquarian-metals/coin-moebius-stripe/server';
+import { createCryptomusVerifier } from '@aquarian-metals/coin-moebius-monero-cryptomus/server';
 
 // Register verifiers once
 registerVerifier('stripe', createStripeVerifier({ endpointSecret: process.env.STRIPE_WEBHOOK_SECRET }));
@@ -136,7 +136,7 @@ export default async function handler(req) {
 
 ```javascript
 // e.g., netlify/functions/create-cryptomus-payment.js
-import { createCryptomusCreator } from '@aquarianmetals/coin-moebius-monero-cryptomus/server';
+import { createCryptomusCreator } from '@aquarian-metals/coin-moebius-monero-cryptomus/server';
 
 const create = createCryptomusCreator({
   merchantUuid: process.env.CRYPTOMUS_MERCHANT_UUID,
@@ -169,7 +169,7 @@ For delayed payments (like Monero block confirmations), the SDK handles the pend
 
 ## 🚨 CAUTION: Dragons Ahead 🚨
 
-**Never import `@aquarianmetals/coin-moebius-server` or any provider’s `./server` entry (for example `@aquarianmetals/coin-moebius-stripe/server`) into your browser bundle.** Those modules are for Node / serverless signature verification. In the browser, import **only** `@aquarianmetals/coin-moebius` (core) and the **non-**`server` entry of each provider package you installed. If your Vite build fails with missing Node built-ins, you imported webhook code on the client—move it to your functions API only.
+**Never import `@aquarian-metals/coin-moebius-server` or any provider’s `./server` entry (for example `@aquarian-metals/coin-moebius-stripe/server`) into your browser bundle.** Those modules are for Node / serverless signature verification. In the browser, import **only** `@aquarian-metals/coin-moebius` (core) and the **non-**`server` entry of each provider package you installed. If your Vite build fails with missing Node built-ins, you imported webhook code on the client—move it to your functions API only.
 
 ---
 

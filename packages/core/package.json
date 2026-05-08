@@ -1,5 +1,5 @@
 {
-	"name": "@aquarianmetals/coin-moebius-core",
+	"name": "@aquarian-metals/coin-moebius-core",
 	"version": "0.1.0-beta.1",
 	"description": "Headless payment router core for Coin Moebius — types, manager, and status polling. Browser-safe.",
 	"keywords": [
@@ -37,8 +37,12 @@
 		"./package.json": "./package.json"
 	},
 	"scripts": {
-		"build": "tsc",
+		"clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+		"build": "npm run clean && tsc",
 		"prepublishOnly": "npm run build"
+	},
+	"engines": {
+		"node": ">=18"
 	},
 	"devDependencies": {
 		"typescript": "~5.8.0"

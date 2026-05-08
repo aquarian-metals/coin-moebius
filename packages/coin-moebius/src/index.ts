@@ -1,1 +1,1 @@
-export * from '@aquarianmetals/coin-moebius-core';
+export * from '@aquarian-metals/coin-moebius-core';

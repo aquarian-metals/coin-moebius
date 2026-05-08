@@ -1,4 +1,4 @@
-import type { PaymentResult } from '@aquarianmetals/coin-moebius-core';
+import type { PaymentResult } from '@aquarian-metals/coin-moebius-core';
 import type { PaymentRecord, PaymentStore } from './types';
 
 const verifyRegistry = new Map<string, (raw: unknown, headers?: unknown) => Promise<PaymentResult>>();

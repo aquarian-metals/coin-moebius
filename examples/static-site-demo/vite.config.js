@@ -12,19 +12,19 @@ export default defineConfig({
 	},
 	resolve: {
 		alias: {
-			'@aquarianmetals/coin-moebius': path.join(
+			'@aquarian-metals/coin-moebius': path.join(
 				repoRoot,
 				'packages/coin-moebius/src/index.ts'
 			),
-			'@aquarianmetals/coin-moebius-core': path.join(
+			'@aquarian-metals/coin-moebius-core': path.join(
 				repoRoot,
 				'packages/core/src/index.ts'
 			),
-			'@aquarianmetals/coin-moebius-monero-cryptomus': path.join(
+			'@aquarian-metals/coin-moebius-monero-cryptomus': path.join(
 				repoRoot,
 				'packages/providers/monero-cryptomus/src/index.ts'
 			),
-			'@aquarianmetals/coin-moebius-stripe': path.join(
+			'@aquarian-metals/coin-moebius-stripe': path.join(
 				repoRoot,
 				'packages/providers/stripe/src/index.ts'
 			),

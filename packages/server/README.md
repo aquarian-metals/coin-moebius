@@ -1,4 +1,4 @@
-# @aquarianmetals/coin-moebius-server
+# @aquarian-metals/coin-moebius-server
 
 Server-side webhook verification + payment status helpers for **[Coin Moebius](https://github.com/aquarian-metals/coin-moebius)**.
 
@@ -8,23 +8,23 @@ Provides:
 
 - `registerVerifier(providerId, verifier)` and `verify(rawBody, headers)` — one webhook endpoint that delegates to whichever provider sent the call.
 - `createStatusSubscriber(store)` — server-side polling helper backed by a `PaymentStore`.
-- `createSupabaseStore(config)` (subpath import: `@aquarianmetals/coin-moebius-server/supabase`) — a ready-made Supabase-backed `PaymentStore`.
+- `createSupabaseStore(config)` (subpath import: `@aquarian-metals/coin-moebius-server/supabase`) — a ready-made Supabase-backed `PaymentStore`.
 
 ## Install
 
 Only inside your serverless functions / Node project:
 
 ```bash
-npm install @aquarianmetals/coin-moebius-server
+npm install @aquarian-metals/coin-moebius-server
 ```
 
-You'll typically also install the server entries of whichever provider packages you verify (e.g. `@aquarianmetals/coin-moebius-stripe`) and any provider-specific server SDKs the README calls out (e.g. `stripe`).
+You'll typically also install the server entries of whichever provider packages you verify (e.g. `@aquarian-metals/coin-moebius-stripe`) and any provider-specific server SDKs the README calls out (e.g. `stripe`).
 
 ## Use
 
 ```js
-import { verify, registerVerifier } from '@aquarianmetals/coin-moebius-server';
-import { createStripeVerifier } from '@aquarianmetals/coin-moebius-stripe/server';
+import { verify, registerVerifier } from '@aquarian-metals/coin-moebius-server';
+import { createStripeVerifier } from '@aquarian-metals/coin-moebius-stripe/server';
 
 registerVerifier('stripe', createStripeVerifier({ endpointSecret: process.env.STRIPE_SECRET }));
 

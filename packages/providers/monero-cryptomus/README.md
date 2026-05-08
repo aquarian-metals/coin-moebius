@@ -1,16 +1,16 @@
-# @aquarianmetals/coin-moebius-monero-cryptomus
+# @aquarian-metals/coin-moebius-monero-cryptomus
 
 Monero (via Cryptomus) provider for **[Coin Moebius](https://github.com/aquarian-metals/coin-moebius)**.
 
 Two entries in one package:
 
-- `@aquarianmetals/coin-moebius-monero-cryptomus` — browser entry. Posts to your own create-payment function (the Cryptomus API key holds spend authority and **must never** ship to the browser).
-- `@aquarianmetals/coin-moebius-monero-cryptomus/server` — Node-only helpers: `createCryptomusCreator` (sign + POST to Cryptomus) and `createCryptomusVerifier` (validate incoming webhooks). **Never import this from browser code.**
+- `@aquarian-metals/coin-moebius-monero-cryptomus` — browser entry. Posts to your own create-payment function (the Cryptomus API key holds spend authority and **must never** ship to the browser).
+- `@aquarian-metals/coin-moebius-monero-cryptomus/server` — Node-only helpers: `createCryptomusCreator` (sign + POST to Cryptomus) and `createCryptomusVerifier` (validate incoming webhooks). **Never import this from browser code.**
 
 ## Install
 
 ```bash
-npm install @aquarianmetals/coin-moebius-monero-cryptomus
+npm install @aquarian-metals/coin-moebius-monero-cryptomus
 ```
 
 The server entry uses Node's built-in `crypto` module — no extra install needed.
@@ -18,8 +18,8 @@ The server entry uses Node's built-in `crypto` module — no extra install neede
 ## Use — browser
 
 ```ts
-import createMoneroCryptomusProvider from '@aquarianmetals/coin-moebius-monero-cryptomus';
-import { createPaymentManager } from '@aquarianmetals/coin-moebius';
+import createMoneroCryptomusProvider from '@aquarian-metals/coin-moebius-monero-cryptomus';
+import { createPaymentManager } from '@aquarian-metals/coin-moebius';
 
 const payments = createPaymentManager({
   providers: [
@@ -37,7 +37,7 @@ You need **two** serverless functions: one to create payments, one to verify web
 
 ```js
 // /api/create-cryptomus-payment
-import { createCryptomusCreator } from '@aquarianmetals/coin-moebius-monero-cryptomus/server';
+import { createCryptomusCreator } from '@aquarian-metals/coin-moebius-monero-cryptomus/server';
 
 const create = createCryptomusCreator({
   merchantUuid: process.env.CRYPTOMUS_MERCHANT_UUID,
@@ -56,8 +56,8 @@ export default async function handler(req) {
 
 ```js
 // /api/payment-webhook
-import { registerVerifier } from '@aquarianmetals/coin-moebius-server';
-import { createCryptomusVerifier } from '@aquarianmetals/coin-moebius-monero-cryptomus/server';
+import { registerVerifier } from '@aquarian-metals/coin-moebius-server';
+import { createCryptomusVerifier } from '@aquarian-metals/coin-moebius-monero-cryptomus/server';
 
 registerVerifier(
   'monero-cryptomus',

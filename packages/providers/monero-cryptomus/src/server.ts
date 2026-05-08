@@ -1,4 +1,4 @@
-import type { PaymentResult } from '@aquarianmetals/coin-moebius-core';
+import type { PaymentResult } from '@aquarian-metals/coin-moebius-core';
 import crypto from 'node:crypto';
 
 // Cryptomus signs both directions with: md5( base64(jsonBody) + paymentApiKey ).

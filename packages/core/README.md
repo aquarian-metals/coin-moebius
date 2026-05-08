@@ -1,4 +1,4 @@
-# @aquarianmetals/coin-moebius-core
+# @aquarian-metals/coin-moebius-core
 
 Headless payment router core for **[Coin Moebius](https://github.com/aquarian-metals/coin-moebius)**.
 
@@ -11,15 +11,15 @@ Browser-safe. Provides:
 ## Install
 
 ```bash
-npm install @aquarianmetals/coin-moebius-core
+npm install @aquarian-metals/coin-moebius-core
 ```
 
-Or use the friendlier alias `@aquarianmetals/coin-moebius` — same exports.
+Or use the friendlier alias `@aquarian-metals/coin-moebius` — same exports.
 
 ## Use
 
 ```ts
-import { createPaymentManager } from '@aquarianmetals/coin-moebius-core';
+import { createPaymentManager } from '@aquarian-metals/coin-moebius-core';
 ```
 
 See the [main README](https://github.com/aquarian-metals/coin-moebius#readme) for the full quick-start.

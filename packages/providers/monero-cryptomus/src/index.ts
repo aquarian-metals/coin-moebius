@@ -1,10 +1,10 @@
-import type { PaymentProvider, InitiateOptions, PaymentResult } from '@aquarianmetals/coin-moebius-core';
+import type { PaymentProvider, InitiateOptions, PaymentResult } from '@aquarian-metals/coin-moebius-core';
 
 export interface MoneroCryptomusConfig {
 	/**
 	 * Endpoint on your own backend that creates the Cryptomus payment.
 	 * Must hold the `paymentApiKey` server-side and call `createCryptomusCreator`
-	 * (from `@aquarianmetals/coin-moebius-monero-cryptomus/server`) — never expose
+	 * (from `@aquarian-metals/coin-moebius-monero-cryptomus/server`) — never expose
 	 * the API key to the browser.
 	 *
 	 * Defaults to `/.netlify/functions/create-cryptomus-payment`.
