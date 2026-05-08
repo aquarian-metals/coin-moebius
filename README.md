@@ -116,7 +116,7 @@ For delayed payments (like Monero block confirmations), the SDK handles the pend
 
 ---
 
-## 🚨 The One Big Rule (Gotcha) 🚨
+## 🚨 CAUTION: Dragons Ahead 🚨
 
 **Never import `@coin-moebius/server` into your browser bundle.** The server package contains Node crypto dependencies for checking signatures. Keep `core` in the browser, and `server` in your Netlify/Vercel/etc functions. If your Vite build explodes, you probably imported a server verifier on the frontend.
 
