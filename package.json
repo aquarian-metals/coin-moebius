@@ -2,8 +2,8 @@
 	"name": "coin-moebius",
 	"private": true,
 	"workspaces": [
-		"packages/coin-moebius",
 		"packages/core",
+		"packages/coin-moebius",
 		"packages/server",
 		"packages/providers/template",
 		"packages/providers/stripe",
@@ -11,7 +11,7 @@
 		"examples/static-site-demo"
 	],
 	"scripts": {
-		"build": "npm run build --workspaces --if-present",
+		"build": "npm run build --if-present -w @aquarian-metals/coin-moebius-core -w @aquarian-metals/coin-moebius-server -w @aquarian-metals/coin-moebius-stripe -w @aquarian-metals/coin-moebius-monero-cryptomus -w @aquarian-metals/coin-moebius-provider-template -w @aquarian-metals/coin-moebius -w coin-moebius-demo",
 		"test": "vitest run",
 		"test:watch": "vitest"
 	},
