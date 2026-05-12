@@ -11,8 +11,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  verify:
+    name: lint + typecheck + format (Node 20)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm run typecheck
+
   test:
-    name: test (Node ${{ matrix.node }})
+    name: test + coverage (Node ${{ matrix.node }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -26,4 +40,23 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - name: Coverage (Node 20 only)
+        if: matrix.node == 20
+        run: npm run test:coverage
+
+  build-and-package:
+    name: build + attw + size (Node 20)
+    runs-on: ubuntu-latest
+    needs: [verify, test]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
       - run: npm run build
+      - name: Are The Types Wrong?
+        run: npm run attw
+      - name: Bundle size budgets
+        run: npm run size

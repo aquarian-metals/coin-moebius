@@ -28,6 +28,6 @@ export interface PaymentProvider {
 			onSuccess: (result: PaymentResult) => void;
 			onPending?: (result: PaymentResult) => void;
 			onError: (error: Error) => void;
-		}
+		},
 	): void | Promise<void>;
 }

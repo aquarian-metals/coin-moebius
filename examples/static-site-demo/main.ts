@@ -1,11 +1,11 @@
-import createMoneroCryptomusProvider from '@aquarian-metals/coin-moebius-monero-cryptomus';
+import createCryptomusProvider from '@aquarian-metals/coin-moebius-cryptomus';
 import { createPaymentManager } from '@aquarian-metals/coin-moebius';
 import createStripeProvider from '@aquarian-metals/coin-moebius-stripe';
 
 const payments = createPaymentManager({
 	providers: [
 		createStripeProvider({ publishableKey: import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY }),
-		createMoneroCryptomusProvider(),
+		createCryptomusProvider(),
 	],
 });
 
@@ -29,8 +29,7 @@ payments.onPending((result) => {
 	if (!statusEl) return;
 	statusEl.style.display = 'block';
 	const qr = result.metadata.qr;
-	const qrImg =
-		typeof qr === 'string' ? `<img src="${qr}" width="200" alt="" />` : '';
+	const qrImg = typeof qr === 'string' ? `<img src="${qr}" width="200" alt="" />` : '';
 	statusEl.innerHTML = `
 		<strong>⏳ Awaiting confirmation...</strong><br />
 		Provider: ${result.provider}<br />
@@ -58,19 +57,15 @@ document.getElementById('monero-tile')?.addEventListener('click', () => {
 		amount: 0.12,
 		currency: 'XMR',
 		metadata: { email: 'buyer@example.com' },
-		providerId: 'monero-cryptomus',
+		providerId: 'cryptomus',
 	});
 });
 
 function startStatusPolling(paymentId: string) {
-	payments.subscribeToStatus(
-		paymentId,
-		{
-			statusEndpoint: '/.netlify/functions/payment-status',
-			onPending: (r) =>
-				console.log('Still pending:', r.metadata.confirmations),
-			onSuccess: (r) => console.log('Success from poll:', r),
-			onTimeout: () => console.log('Timeout – ask user to check email'),
-		}
-	);
+	payments.subscribeToStatus(paymentId, {
+		statusEndpoint: '/.netlify/functions/payment-status',
+		onPending: (r) => console.log('Still pending:', r.metadata.confirmations),
+		onSuccess: (r) => console.log('Success from poll:', r),
+		onTimeout: () => console.log('Timeout – ask user to check email'),
+	});
 }

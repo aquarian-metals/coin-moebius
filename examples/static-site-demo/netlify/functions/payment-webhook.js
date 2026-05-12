@@ -1,4 +1,8 @@
-import { verify, registerVerifier, createSupabaseStore } from '@aquarian-metals/coin-moebius-server';
+import {
+	verify,
+	registerVerifier,
+	createSupabaseStore,
+} from '@aquarian-metals/coin-moebius-server';
 import { createStripeVerifier } from '@aquarian-metals/coin-moebius-stripe/server';
 import { createCryptomusVerifier } from '@aquarian-metals/coin-moebius-monero-cryptomus/server';
 
@@ -12,14 +16,14 @@ registerVerifier(
 	createStripeVerifier({
 		endpointSecret: process.env.STRIPE_WEBHOOK_SECRET ?? '',
 		secretKey: process.env.STRIPE_SECRET_KEY,
-	})
+	}),
 );
 registerVerifier(
 	'monero-cryptomus',
 	createCryptomusVerifier({
 		merchantUuid: process.env.CRYPTOMUS_MERCHANT_UUID ?? '',
 		paymentApiKey: process.env.CRYPTOMUS_PAYMENT_API_KEY ?? '',
-	})
+	}),
 );
 
 export default async (req) => {

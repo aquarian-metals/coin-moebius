@@ -13,12 +13,24 @@ export interface StripeVerifierConfig {
 	secretKey?: string;
 	/**
 	 * Pin the Stripe API version. Defaults to the version this package was
-	 * tested against. Override if you've upgraded the `stripe` SDK and need a
-	 * matching version.
+	 * tested against (an internal `DEFAULT_API_VERSION` constant in this file).
+	 *
+	 * **Version bumping policy:** we update the default on a deliberate
+	 * quarterly cadence. We don't auto-bump via Renovate or dependabot —
+	 * Stripe API version changes can have subtle behavior differences
+	 * (especially around `payment_intent` status semantics), so each bump
+	 * gets a manual review against the Stripe upgrade guide before shipping.
+	 * If you've upgraded the `stripe` SDK in your own project and need a
+	 * different version, pass it here to override.
 	 */
 	apiVersion?: Stripe.LatestApiVersion;
 }
 
+/**
+ * The Stripe API version this package is tested against. Bumped quarterly
+ * after a manual review of Stripe's upgrade guide. See {@link StripeVerifierConfig.apiVersion}
+ * for the override option.
+ */
 const DEFAULT_API_VERSION: Stripe.LatestApiVersion = '2025-02-24.acacia';
 
 export function createStripeVerifier(config: StripeVerifierConfig) {
@@ -30,9 +42,12 @@ export function createStripeVerifier(config: StripeVerifierConfig) {
 		apiVersion: config.apiVersion ?? DEFAULT_API_VERSION,
 	});
 
-	return async function verifyStripeWebhook(rawBody: unknown, headers: unknown): Promise<PaymentResult> {
+	return async function verifyStripeWebhook(
+		rawBody: unknown,
+		headers: unknown,
+	): Promise<PaymentResult> {
 		const headerRecord = (headers ?? {}) as Record<string, string | undefined>;
-		const signature = headerRecord['stripe-signature'] || headerRecord['Stripe-Signature'];
+		const signature = headerRecord['stripe-signature'] ?? headerRecord['Stripe-Signature'];
 
 		if (!signature) {
 			throw new Error('coin-moebius/stripe: missing stripe-signature header');
@@ -43,26 +58,26 @@ export function createStripeVerifier(config: StripeVerifierConfig) {
 			event = await stripe.webhooks.constructEventAsync(
 				rawBody as string | Buffer,
 				signature,
-				config.endpointSecret
+				config.endpointSecret,
 			);
 		} catch (err) {
 			throw new Error(
-				`coin-moebius/stripe: invalid signature – ${err instanceof Error ? err.message : String(err)}`
+				`coin-moebius/stripe: invalid signature – ${err instanceof Error ? err.message : String(err)}`,
 			);
 		}
 
 		if (event.type === 'checkout.session.completed') {
-			const session = event.data.object as Stripe.Checkout.Session;
+			const session = event.data.object;
 			if (session.payment_status === 'paid' || session.status === 'complete') {
 				return {
 					status: 'success',
 					paymentId: session.id,
 					provider: 'stripe',
 					amount: (session.amount_total ?? 0) / 100,
-					currency: (session.currency || 'usd').toUpperCase(),
+					currency: (session.currency ?? 'usd').toUpperCase(),
 					metadata: {
 						...(session.metadata ?? {}),
-						email: session.customer_details?.email || session.customer_email,
+						email: session.customer_details?.email ?? session.customer_email,
 					},
 					timestamp: Date.now(),
 					raw: event,
@@ -71,14 +86,14 @@ export function createStripeVerifier(config: StripeVerifierConfig) {
 		}
 
 		if (event.type === 'payment_intent.succeeded') {
-			const pi = event.data.object as Stripe.PaymentIntent;
+			const pi = event.data.object;
 			if (pi.status === 'succeeded') {
 				return {
 					status: 'success',
 					paymentId: pi.id,
 					provider: 'stripe',
 					amount: (pi.amount ?? 0) / 100,
-					currency: (pi.currency || 'usd').toUpperCase(),
+					currency: (pi.currency ?? 'usd').toUpperCase(),
 					metadata: {
 						...(pi.metadata ?? {}),
 						email: pi.receipt_email,

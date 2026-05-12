@@ -1,0 +1,21 @@
+{
+	"$schema": "https://unpkg.com/@changesets/config@3.0.0/schema.json",
+	"changelog": ["@changesets/changelog-github", { "repo": "aquarian-metals/coin-moebius" }],
+	"commit": false,
+	"fixed": [
+		[
+			"@aquarian-metals/coin-moebius-core",
+			"@aquarian-metals/coin-moebius",
+			"@aquarian-metals/coin-moebius-server",
+			"@aquarian-metals/coin-moebius-stripe",
+			"@aquarian-metals/coin-moebius-cryptomus",
+			"@aquarian-metals/coin-moebius-manual",
+			"@aquarian-metals/coin-moebius-provider-template"
+		]
+	],
+	"linked": [],
+	"access": "public",
+	"baseBranch": "main",
+	"updateInternalDependencies": "patch",
+	"ignore": ["coin-moebius-demo"]
+}

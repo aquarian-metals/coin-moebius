@@ -1,6 +1,6 @@
 {
 	"name": "@aquarian-metals/coin-moebius",
-	"version": "0.1.0-beta.1",
+	"version": "0.2.0",
 	"description": "Headless payment router for static sites — friendly install name. Re-exports @aquarian-metals/coin-moebius-core.",
 	"keywords": [
 		"payments",
@@ -47,7 +47,7 @@
 		"node": ">=18"
 	},
 	"dependencies": {
-		"@aquarian-metals/coin-moebius-core": "^0.1.0-beta.1"
+		"@aquarian-metals/coin-moebius-core": "^0.2.0"
 	},
 	"devDependencies": {
 		"typescript": "~5.8.0"

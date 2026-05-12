@@ -1,13 +1,12 @@
 {
 	"name": "@aquarian-metals/coin-moebius-server",
-	"version": "0.1.0-beta.1",
+	"version": "0.2.0",
 	"description": "Server-side webhook verification + payment status helpers for Coin Moebius. Node / serverless only — never import in browser bundles.",
 	"keywords": [
 		"payments",
 		"webhook",
 		"webhook-verification",
 		"serverless",
-		"supabase",
 		"coin-moebius"
 	],
 	"author": "aquarian-metals",
@@ -33,10 +32,6 @@
 			"types": "./dist/index.d.ts",
 			"import": "./dist/index.js"
 		},
-		"./supabase": {
-			"types": "./dist/supabase.d.ts",
-			"import": "./dist/supabase.js"
-		},
 		"./package.json": "./package.json"
 	},
 	"scripts": {
@@ -48,8 +43,7 @@
 		"node": ">=18"
 	},
 	"dependencies": {
-		"@aquarian-metals/coin-moebius-core": "^0.1.0-beta.1",
-		"@supabase/supabase-js": "^2.45.0"
+		"@aquarian-metals/coin-moebius-core": "^0.2.0"
 	},
 	"devDependencies": {
 		"typescript": "~5.8.0"

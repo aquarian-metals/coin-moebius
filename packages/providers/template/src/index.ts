@@ -1,5 +1,9 @@
-import type { PaymentProvider, InitiateOptions, PaymentResult } from '@aquarian-metals/coin-moebius-core';
-import { ensureScriptLoaded } from './script-loader';
+import type {
+	PaymentProvider,
+	InitiateOptions,
+	PaymentResult,
+} from '@aquarian-metals/coin-moebius-core';
+import { ensureScriptLoaded } from './script-loader.js';
 
 export interface MyProviderConfig {
 	publishableKey?: string;
@@ -17,14 +21,11 @@ export default function createMyProvider(config: MyProviderConfig): PaymentProvi
 				onSuccess: (result: PaymentResult) => void;
 				onPending?: (result: PaymentResult) => void;
 				onError: (error: Error) => void;
-			}
+			},
 		) {
 			try {
 				if (config.publishableKey) {
-					await ensureScriptLoaded(
-						'https://js.stripe.com/v3/',
-						'Stripe'
-					);
+					await ensureScriptLoaded('https://js.stripe.com/v3/', 'Stripe');
 				}
 
 				const result: PaymentResult = {
@@ -33,16 +34,16 @@ export default function createMyProvider(config: MyProviderConfig): PaymentProvi
 					provider: provider.id,
 					amount: options.amount,
 					currency: options.currency,
-					metadata: options.metadata || {},
+					metadata: options.metadata ?? {},
 					timestamp: Date.now(),
-					raw: {}
+					raw: {},
 				};
 
 				callbacks.onSuccess(result);
 			} catch (err) {
 				callbacks.onError(err instanceof Error ? err : new Error(String(err)));
 			}
-		}
+		},
 	};
 
 	return provider;

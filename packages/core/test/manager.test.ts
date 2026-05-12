@@ -1,7 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createPaymentManager, type PaymentProvider, type PaymentResult } from '../src/index';
 
-function makeProvider(id: string, behaviour: 'success' | 'pending' | 'error' = 'success'): PaymentProvider {
+function makeProvider(
+	id: string,
+	behaviour: 'success' | 'pending' | 'error' = 'success',
+): PaymentProvider {
 	return {
 		id,
 		name: id,
@@ -50,7 +53,7 @@ describe('createPaymentManager', () => {
 	it('throws on unknown providerId', () => {
 		const payments = createPaymentManager({ providers: [makeProvider('stripe')] });
 		expect(() =>
-			payments.initiate({ productId: 'p', amount: 1, currency: 'USD', providerId: 'nope' })
+			payments.initiate({ productId: 'p', amount: 1, currency: 'USD', providerId: 'nope' }),
 		).toThrow(/unknown provider "nope"/);
 	});
 

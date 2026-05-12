@@ -19,7 +19,7 @@ function fakeStore(records: Array<PaymentRecord | null>): PaymentStore {
 const baseRecord = (status: PaymentRecord['status']): PaymentRecord => ({
 	status,
 	paymentId: 'p1',
-	provider: 'monero-cryptomus',
+	provider: 'cryptomus',
 	amount: 0.12,
 	currency: 'XMR',
 	metadata: {},
@@ -47,7 +47,7 @@ describe('createStatusSubscriber', () => {
 
 	it('fires onSuccess and stops once status flips', async () => {
 		const subscribe = createStatusSubscriber(
-			fakeStore([baseRecord('pending'), baseRecord('success')])
+			fakeStore([baseRecord('pending'), baseRecord('success')]),
 		);
 		const onSuccess = vi.fn();
 		const onPending = vi.fn();

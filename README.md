@@ -2,20 +2,20 @@
 
 **The headless, zero-UI payment router for static sites.**
 
-Turn Stripe, Monero, Zano, gold escrow, or literally anything else into a single, boring `onSuccess` callback.
+Turn Stripe, Monero, gold escrow, or literally anything else into a single, boring `onSuccess` callback.
 
 Static sites (JAMstack) are fast and cheap. But the second you want to accept money, you're forced to either rent a heavy, locked-in storefront (Gumroad, Payhip) or hand-roll a spaghetti monster of different webhooks for every gateway.
 
-**Coin Moebius fixes this.** It gives you a WordPress-style plugin ecosystem for static site checkouts. You keep 100% control of your UI and fulfillment logic. We just normalize the *"they paid"* signal.
+**Coin Moebius fixes this.** It gives you a WordPress-style plugin ecosystem for static site checkouts. You keep 100% control of your UI and fulfillment logic. We just normalize the _"they paid"_ signal.
 
 ---
 
 ## What makes it magic?
 
-* **Zero Opinion UI:** We don't care what your buy button looks like. Build your own frontend.
-* **One Universal Callback:** Whether they paid with a Visa via Stripe or Monero, your fulfillment code runs exactly the same way.
-* **Tiny Core:** We stripped the heavy stuff out. Only install the providers you actually use.
-* **Safe by Default:** A strict boundary between the browser (`core`) and your serverless webhooks (`server`).
+- **Zero Opinion UI:** We don't care what your buy button looks like. Build your own frontend.
+- **One Universal Callback:** Whether they paid with a Visa via Stripe or Monero, your fulfillment code runs exactly the same way.
+- **Tiny Core:** We stripped the heavy stuff out. Only install the providers you actually use.
+- **Safe by Default:** A strict boundary between the browser (`core`) and your serverless webhooks (`server`).
 
 ---
 
@@ -66,7 +66,7 @@ Cryptomus has no separate server SDK; the verifier uses Node's built-in `crypto`
 Initialize the manager in your Vite/Next/Astro app. Feed it your providers, and tell it what to do when someone successfully pays.
 
 ```typescript
-import createMoneroCryptomusProvider from '@aquarian-metals/coin-moebius-monero-cryptomus';
+import createCryptomusProvider from '@aquarian-metals/coin-moebius-cryptomus';
 import { createPaymentManager } from '@aquarian-metals/coin-moebius';
 import createStripeProvider from '@aquarian-metals/coin-moebius-stripe';
 
@@ -76,7 +76,7 @@ const payments = createPaymentManager({
     // Cryptomus' API key holds spend authority on your merchant account, so it
     // can never live in the browser. The provider posts to a serverless function
     // you control (default: /.netlify/functions/create-cryptomus-payment) — see §2.
-    createMoneroCryptomusProvider(),
+    createCryptomusProvider(),
   ],
 });
 
@@ -85,7 +85,6 @@ payments.onSuccess((result) => {
   console.log(`PAID with ${result.provider}!`, result);
   // Unlock the download, fire the confetti, update the DB.
 });
-
 ```
 
 Trigger it from your own beautiful, custom UI:
@@ -98,9 +97,8 @@ document.getElementById('buy-stripe').onclick = () => {
 
 // For Crypto
 document.getElementById('buy-crypto').onclick = () => {
-  payments.initiate({ productId: 'ebook-42', amount: 0.12, currency: 'XMR', providerId: 'monero-cryptomus' });
+  payments.initiate({ productId: 'ebook-42', amount: 0.12, currency: 'XMR', providerId: 'cryptomus' });
 };
-
 ```
 
 ### 2. The Backend (Serverless Webhooks)
@@ -109,26 +107,27 @@ You need two tiny serverless functions: one **webhook** that any provider can PO
 
 ```javascript
 // e.g., netlify/functions/payment-webhook.js
-import { verify, registerVerifier } from '@aquarian-metals/coin-moebius-server';
+import { createVerifierRegistry } from '@aquarian-metals/coin-moebius-server';
 import { createStripeVerifier } from '@aquarian-metals/coin-moebius-stripe/server';
-import { createCryptomusVerifier } from '@aquarian-metals/coin-moebius-monero-cryptomus/server';
+import { createCryptomusVerifier } from '@aquarian-metals/coin-moebius-cryptomus/server';
 
-// Register verifiers once
-registerVerifier('stripe', createStripeVerifier({ endpointSecret: process.env.STRIPE_WEBHOOK_SECRET }));
-registerVerifier(
-  'monero-cryptomus',
+// One registry per consumer, registered once at module load.
+const verifiers = createVerifierRegistry();
+verifiers.register('stripe', createStripeVerifier({ endpointSecret: process.env.STRIPE_WEBHOOK_SECRET }));
+verifiers.register(
+  'cryptomus',
   createCryptomusVerifier({
     merchantUuid: process.env.CRYPTOMUS_MERCHANT_UUID,
     paymentApiKey: process.env.CRYPTOMUS_PAYMENT_API_KEY,
-  })
+  }),
 );
 
 export default async function handler(req) {
   // Boom. Verified, standardized payload.
-  const result = await verify(req.body, req.headers);
+  const result = await verifiers.verify(req.body, req.headers);
 
   if (result.status === 'success') {
-     // Fulfill the order
+    // Fulfill the order
   }
   return { statusCode: 200 };
 }
@@ -136,7 +135,7 @@ export default async function handler(req) {
 
 ```javascript
 // e.g., netlify/functions/create-cryptomus-payment.js
-import { createCryptomusCreator } from '@aquarian-metals/coin-moebius-monero-cryptomus/server';
+import { createCryptomusCreator } from '@aquarian-metals/coin-moebius-cryptomus/server';
 
 const create = createCryptomusCreator({
   merchantUuid: process.env.CRYPTOMUS_MERCHANT_UUID,
@@ -182,3 +181,13 @@ We expect the community to build the rest. Want to accept Solana, Lightning, or 
 1. Copy `packages/providers/template`.
 2. Write a frontend `initiate()` and a backend `server.ts` verifier.
 3. Publish it to npm as `@your-name/coin-moebius-zano`.
+
+---
+
+## Documentation
+
+- **[STABILITY.md](./STABILITY.md)** — what's frozen at 1.0 versus what may still evolve. Read before integrating against a `0.x` release.
+- **[MIGRATION.md](./MIGRATION.md)** — recipe-format upgrade guide between SDK versions.
+- **[CHANGELOG.md](./CHANGELOG.md)** — the formal record of changes per release.
+- **[docs/integration-stripe.md](./docs/integration-stripe.md)** — end-to-end walkthrough for accepting Stripe payments, including Stripe Dashboard setup, environment variables, deployment notes, and common failure modes.
+- **API reference** — generated from TSDoc via `npm run docs` → `docs/api/index.html`. Will be hosted at `docs.coinmoebius.com` post-1.0.

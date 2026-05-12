@@ -2,7 +2,7 @@ name: Release
 
 on:
   push:
-    tags: ['v*']
+    tags: ["v*"]
 
 # Required for npm provenance via OIDC.
 permissions:
@@ -19,31 +19,26 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          registry-url: 'https://registry.npmjs.org'
+          registry-url: "https://registry.npmjs.org"
 
       - run: npm ci
-      - run: npm test
-      - run: npm run build
+      - run: npm run verify
 
-      # Publish each package in dependency order. Versions ending with `-…`
-      # (e.g. 0.1.0-beta.1) ship under the `beta` dist-tag; stable versions
-      # ship under `latest`.
-      - name: Publish packages
+      # Determine the dist-tag from the root package version-style. Pre-release
+      # versions (`*-beta.x`, `*-rc.x`, etc.) ship under the `beta` tag; stable
+      # versions ship under `latest`. Every workspace ships under the same tag.
+      - name: Determine dist-tag
+        id: tag
+        run: |
+          VERSION=$(node -p "require('./packages/core/package.json').version")
+          TAG=latest
+          case "$VERSION" in *-*) TAG=beta ;; esac
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Publishing under dist-tag: $TAG"
+
+      # Publish every workspace marked public. `--workspaces` iterates them all;
+      # workspaces with `"private": true` (like examples/) are skipped automatically.
+      - name: Publish workspaces
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          set -euo pipefail
-          for pkg in \
-            packages/core \
-            packages/coin-moebius \
-            packages/server \
-            packages/providers/template \
-            packages/providers/stripe \
-            packages/providers/monero-cryptomus
-          do
-            VERSION=$(node -p "require('./$pkg/package.json').version")
-            TAG=latest
-            case "$VERSION" in *-*) TAG=beta ;; esac
-            echo "Publishing $pkg @ $VERSION (tag: $TAG)"
-            (cd "$pkg" && npm publish --tag "$TAG" --provenance)
-          done
+        run: npm publish --workspaces --tag ${{ steps.tag.outputs.tag }} --provenance

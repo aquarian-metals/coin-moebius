@@ -10,6 +10,61 @@ single bump rolls the whole family forward.
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-05-12
+
+### Added
+
+- **`@aquarian-metals/coin-moebius-manual`** — manual / async payment provider for Goldbacks, cash in mail, wire transfer, personal check, barter, and any other "I'll confirm receipt by hand" payment method. Browser entry renders a default modal with mailing instructions and a reference code; the `./server` subpath exposes a reference-code generator and the `pending_manual` → `succeeded` / `manual_canceled` / `manual_expired` state machine. No signature verifier — manual confirmations come from authenticated dashboard clicks, not external webhooks.
+
+### Changed (breaking)
+
+- **Renamed `@aquarian-metals/coin-moebius-monero-cryptomus` → `@aquarian-metals/coin-moebius-cryptomus`** along with the provider id (`monero-cryptomus` → `cryptomus`), factory function (`createMoneroCryptomusProvider` → `createCryptomusProvider`), config type (`MoneroCryptomusConfig` → `CryptomusConfig`), and all error-message prefixes. The package routes any Cryptomus-supported coin, not just Monero — the original name was misleading.
+- **Cryptomus client now forwards `options.currency` to the backend create-endpoint** instead of hardcoding `'XMR'`. The `PaymentResult` returned to the SDK callback now reports the actual requested currency. The `metadata.amountXMR` field was renamed to `metadata.cryptomusAmount`.
+- **`CryptomusCreateInput.currency` is now required** (was optional with `'XMR'` default). Callers must specify the coin explicitly.
+- **`@aquarian-metals/coin-moebius-server`'s `registerVerifier` and `verify` top-level functions removed in favor of `createVerifierRegistry()`.** The previous API used module-level mutable state, which leaked across consumers in multi-tenant runtimes and forced tests to `vi.resetModules()` for isolation. The factory pattern returns an isolated `{ register, verify }` instance per call. See migration note below.
+
+### Migration
+
+**Cryptomus rename:** Find-and-replace `monero-cryptomus` → `cryptomus`, `MoneroCryptomus` → `Cryptomus`, `createMoneroCryptomusProvider` → `createCryptomusProvider` in your integration. Update `package.json` dependencies from `@aquarian-metals/coin-moebius-monero-cryptomus` to `@aquarian-metals/coin-moebius-cryptomus`. If you were not passing `currency` to `createCryptomusCreator`, add `currency: 'XMR'` to preserve the previous default behavior.
+
+**Server registry factory:** Replace `import { verify, registerVerifier } from '@aquarian-metals/coin-moebius-server'` with `import { createVerifierRegistry }`. Create a registry at module load:
+
+```typescript
+// Before
+import { verify, registerVerifier } from '@aquarian-metals/coin-moebius-server';
+registerVerifier('stripe', createStripeVerifier({ ... }));
+const result = await verify(req.body, req.headers);
+
+// After
+import { createVerifierRegistry } from '@aquarian-metals/coin-moebius-server';
+const verifiers = createVerifierRegistry();
+verifiers.register('stripe', createStripeVerifier({ ... }));
+const result = await verifiers.verify(req.body, req.headers);
+```
+
+### Added
+
+- **`@aquarian-metals/coin-moebius-manual`** modal now has jsdom-based test coverage — 12 tests covering ARIA attributes, focus management, button clicks, Escape key, focus restoration, XSS escaping, and the custom-renderer override path.
+- **`@aquarian-metals/coin-moebius`** (the re-export alias) now has a smoke test verifying that every symbol from `coin-moebius-core` is reachable through the alias with the same identity.
+- **`createVerifierRegistry()` in `@aquarian-metals/coin-moebius-server`** — per-instance verifier registries (replaces the module-level state described above).
+- **`createMemoryStore()` in `@aquarian-metals/coin-moebius-server`** — minimal zero-dependency in-memory `PaymentStore` implementation. Useful for tests, prototypes, and getting-started examples. Not production-viable (state is lost on process restart); production consumers implement `PaymentStore` against their own backing store.
+
+### Removed (breaking)
+
+- **Supabase adapter removed from `@aquarian-metals/coin-moebius-server`.** `createSupabaseStore`, `SupabaseStoreConfig`, the `./supabase` subpath export, and the runtime dependency on `@supabase/supabase-js` are all gone. The SDK is strictly vendor-neutral: it ships the `PaymentStore` interface plus a minimal in-memory reference adapter (`createMemoryStore`), and concrete vendor-coupled adapters live in consumers' own code or in separately-published packages. Anyone who needs Supabase persistence implements `PaymentStore` against the Supabase client directly (~30 lines).
+- **`PaymentRecord.confirmations` field removed.** The top-level `confirmations?: number` is gone. Provider-specific fields like blockchain confirmation counts now live consistently in `metadata` (where the Cryptomus verifier already puts them). The `PaymentRecord` interface only extends `PaymentResult` with `createdAt`/`updatedAt` server-side timestamps.
+
+### Changed
+
+- **Default checkout endpoints generalized.** `coin-moebius-stripe`'s `sessionEndpoint` defaults to `/api/checkout/stripe` (was `/.netlify/functions/create-stripe-session`); `coin-moebius-cryptomus`'s `createEndpoint` defaults to `/api/checkout/cryptomus` (was `/.netlify/functions/create-cryptomus-payment`). REST-style, vendor-neutral; matches the existing `/api/checkout/manual` default. Netlify users override via the config option to preserve the old paths.
+
+### Documented
+
+- **`PaymentStore` interface** in `coin-moebius-server`'s `types.ts` now has TSDoc covering the contract (`upsert` + `get`), where provider-specific fields go (`metadata`), and how `createdAt`/`updatedAt` interact.
+- **`subscribeToStatus` split** between browser (`coin-moebius-core`'s `payments.subscribeToStatus`) and server (`coin-moebius-server`'s `createStatusSubscriber(store)`) — both functions now have TSDoc explaining which environment to pick.
+- **Manual provider status mapping** — new README section in `coin-moebius-manual` documenting how the internal four-state machine (`pending_manual`, `succeeded`, `manual_canceled`, `manual_expired`) projects onto the public three-value `PaymentResult.status` enum.
+- **Stripe API version policy** — `coin-moebius-stripe`'s `DEFAULT_API_VERSION` constant and `apiVersion` config option now document the quarterly manual-bump cadence (no auto-bumping via Renovate/dependabot — Stripe API changes warrant a manual review against their upgrade guide).
+
 ## [0.1.0-beta.1] — 2026-05-08
 
 Initial public beta. Six packages, all under the `@aquarian-metals/` scope, all
@@ -31,7 +86,7 @@ publishing under the `beta` dist-tag on npm.
   redirects to Stripe Checkout via a configurable `sessionEndpoint`. The
   `./server` subpath verifies webhooks using `webhooks.constructEventAsync`,
   which works on Node, Cloudflare Workers, Deno, and other edge runtimes.
-  The Stripe SDK is an *optional* peer dependency, so browser bundles never
+  The Stripe SDK is an _optional_ peer dependency, so browser bundles never
   pull in `node:crypto`.
 - **`@aquarian-metals/coin-moebius-monero-cryptomus`** — Monero (via Cryptomus)
   provider. Browser entry posts to a configurable `createEndpoint` you control;

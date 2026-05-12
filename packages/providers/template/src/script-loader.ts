@@ -1,7 +1,7 @@
 export async function ensureScriptLoaded(
 	src: string,
 	globalName?: string,
-	timeout = 10000
+	timeout = 10000,
 ): Promise<void> {
 	if (globalName && (window as unknown as Record<string, unknown>)[globalName]) return;
 

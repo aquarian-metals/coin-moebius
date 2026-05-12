@@ -1,11 +1,19 @@
-import type { PaymentProvider, InitiateOptions, PaymentResult } from '@aquarian-metals/coin-moebius-core';
+import type {
+	PaymentProvider,
+	InitiateOptions,
+	PaymentResult,
+} from '@aquarian-metals/coin-moebius-core';
 import { loadStripe } from '@stripe/stripe-js';
 
 export interface StripeProviderConfig {
 	publishableKey: string;
 	/**
 	 * Endpoint on your own backend that creates a Stripe Checkout session and
-	 * returns `{ sessionId }`. Defaults to `/.netlify/functions/create-stripe-session`.
+	 * returns `{ sessionId }`. Defaults to `/api/checkout/stripe` — a
+	 * vendor-neutral REST-style path that works out-of-the-box on Cloudflare
+	 * Workers, Vercel, Express, or any host where you serve that route.
+	 * Override for hosts with different conventions (e.g.,
+	 * `/.netlify/functions/create-stripe-session` for Netlify).
 	 *
 	 * Your secret key must stay server-side — never ship it to the browser.
 	 */
@@ -13,7 +21,7 @@ export interface StripeProviderConfig {
 }
 
 export default function createStripeProvider(config: StripeProviderConfig): PaymentProvider {
-	const sessionEndpoint = config.sessionEndpoint ?? '/.netlify/functions/create-stripe-session';
+	const sessionEndpoint = config.sessionEndpoint ?? '/api/checkout/stripe';
 
 	const provider: PaymentProvider = {
 		id: 'stripe',
@@ -26,7 +34,7 @@ export default function createStripeProvider(config: StripeProviderConfig): Paym
 				onSuccess: (result: PaymentResult) => void;
 				onPending?: (result: PaymentResult) => void;
 				onError: (error: Error) => void;
-			}
+			},
 		) {
 			try {
 				const stripe = await loadStripe(config.publishableKey);
@@ -55,7 +63,12 @@ export default function createStripeProvider(config: StripeProviderConfig): Paym
 
 				const { error } = await stripe.redirectToCheckout({ sessionId });
 
-				if (error) throw error;
+				// Stripe.js types `error` as a plain object (`{ message?: string, type?: string }`),
+				// not a true Error instance. Wrap it before throwing so downstream handlers can
+				// rely on `instanceof Error`.
+				if (error) {
+					throw new Error(error.message ?? 'coin-moebius/stripe: redirectToCheckout failed');
+				}
 
 				callbacks.onPending?.({
 					status: 'pending',
@@ -63,7 +76,7 @@ export default function createStripeProvider(config: StripeProviderConfig): Paym
 					provider: provider.id,
 					amount: options.amount,
 					currency: options.currency,
-					metadata: options.metadata || {},
+					metadata: options.metadata ?? {},
 					timestamp: Date.now(),
 				});
 			} catch (err) {

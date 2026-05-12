@@ -31,7 +31,7 @@ const payments = createPaymentManager({
   providers: [
     createStripeProvider({
       publishableKey: import.meta.env.VITE_STRIPE_KEY,
-      // optional — defaults to '/.netlify/functions/create-stripe-session'
+      // optional — defaults to '/api/checkout/stripe'
       sessionEndpoint: '/api/create-stripe-session',
     }),
   ],
@@ -51,7 +51,7 @@ registerVerifier(
     // Optional but recommended — pass your secret key so the same Stripe
     // instance can be reused for refunds / retrieval calls in this function.
     secretKey: process.env.STRIPE_SECRET_KEY,
-  })
+  }),
 );
 ```
 

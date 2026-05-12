@@ -1,13 +1,13 @@
 {
-	"name": "@aquarian-metals/coin-moebius-monero-cryptomus",
-	"version": "0.1.0-beta.1",
-	"description": "Monero (via Cryptomus) provider for Coin Moebius — browser initiate entry plus a server-only webhook verifier under the ./server subpath.",
+	"name": "@aquarian-metals/coin-moebius-cryptomus",
+	"version": "0.2.0",
+	"description": "Cryptomus payment provider for Coin Moebius. Routes any Cryptomus-supported coin (Monero, btc, USDT, and many more) through the same SDK callback shape.",
 	"keywords": [
 		"payments",
-		"monero",
-		"xmr",
 		"cryptomus",
 		"crypto",
+		"monero",
+		"bitcoin",
 		"webhook",
 		"coin-moebius"
 	],
@@ -20,7 +20,7 @@
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/aquarian-metals/coin-moebius.git",
-		"directory": "packages/providers/monero-cryptomus"
+		"directory": "packages/providers/cryptomus"
 	},
 	"type": "module",
 	"main": "./dist/index.js",
@@ -49,7 +49,7 @@
 		"node": ">=18"
 	},
 	"dependencies": {
-		"@aquarian-metals/coin-moebius-core": "^0.1.0-beta.1"
+		"@aquarian-metals/coin-moebius-core": "^0.2.0"
 	},
 	"devDependencies": {
 		"typescript": "~5.8.0"

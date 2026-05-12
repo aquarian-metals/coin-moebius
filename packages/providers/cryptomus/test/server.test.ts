@@ -32,7 +32,7 @@ describe('createCryptomusVerifier', () => {
 
 		expect(result.status).toBe('success');
 		expect(result.paymentId).toBe('crypt-uuid-1');
-		expect(result.provider).toBe('monero-cryptomus');
+		expect(result.provider).toBe('cryptomus');
 		expect(result.amount).toBeCloseTo(0.12345, 5);
 		expect(result.currency).toBe('XMR');
 		expect(result.metadata).toMatchObject({
@@ -75,9 +75,9 @@ describe('createCryptomusVerifier', () => {
 		const payload = { uuid: 'x', status: 'paid', amount: '1', currency: 'XMR', address: 'addr' };
 		const sign = cryptomusSign(JSON.stringify(payload), KEY);
 
-		await expect(
-			verify({ ...payload, amount: '999', sign }, undefined)
-		).rejects.toThrow(/invalid signature/);
+		await expect(verify({ ...payload, amount: '999', sign }, undefined)).rejects.toThrow(
+			/invalid signature/,
+		);
 	});
 });
 
@@ -88,8 +88,8 @@ describe('createCryptomusCreator', () => {
 				JSON.stringify({
 					result: { uuid: 'crypt-1', address: '4abc...', qr: 'data:qr', amount: '0.12' },
 				}),
-				{ status: 200 }
-			)
+				{ status: 200 },
+			),
 		);
 
 		const create = createCryptomusCreator({
@@ -100,7 +100,7 @@ describe('createCryptomusCreator', () => {
 			apiUrl: 'https://api.cryptomus.example/v1/payment',
 		});
 
-		const out = await create({ productId: 'sku-1', amount: 0.12 });
+		const out = await create({ productId: 'sku-1', amount: 0.12, currency: 'XMR' });
 
 		expect(out).toEqual({
 			uuid: 'crypt-1',
@@ -139,12 +139,14 @@ describe('createCryptomusCreator', () => {
 			returnUrl: 'https://x.example/success',
 		});
 
-		await expect(create({ productId: 'p', amount: 1 })).rejects.toThrow(/403 forbidden/);
+		await expect(create({ productId: 'p', amount: 1, currency: 'XMR' })).rejects.toThrow(
+			/403 forbidden/,
+		);
 	});
 
 	it('throws when Cryptomus returns a result missing uuid/address', async () => {
 		vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-			new Response(JSON.stringify({ result: { address: 'only-addr' } }), { status: 200 })
+			new Response(JSON.stringify({ result: { address: 'only-addr' } }), { status: 200 }),
 		);
 		const create = createCryptomusCreator({
 			merchantUuid: MERCHANT,
@@ -153,7 +155,9 @@ describe('createCryptomusCreator', () => {
 			returnUrl: 'https://x.example/success',
 		});
 
-		await expect(create({ productId: 'p', amount: 1 })).rejects.toThrow(/missing uuid\/address/);
+		await expect(create({ productId: 'p', amount: 1, currency: 'XMR' })).rejects.toThrow(
+			/missing uuid\/address/,
+		);
 	});
 
 	it('round-trips: a creator-signed body validates against createCryptomusVerifier', async () => {
@@ -161,7 +165,7 @@ describe('createCryptomusCreator', () => {
 		// (with a synthetic webhook-style envelope) and confirm the round-trip works.
 		let sentBody: string | undefined;
 		vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => {
-			sentBody = (init as RequestInit).body as string;
+			sentBody = init!.body as string;
 			return new Response(JSON.stringify({ result: { uuid: 'u1', address: 'a1' } }), {
 				status: 200,
 			});
@@ -173,7 +177,7 @@ describe('createCryptomusCreator', () => {
 			callbackUrl: 'https://x.example/api/payment-webhook',
 			returnUrl: 'https://x.example/success',
 		});
-		await create({ productId: 'p', amount: 1 });
+		await create({ productId: 'p', amount: 1, currency: 'XMR' });
 
 		// Now build a Cryptomus-style webhook payload and verify it.
 		const webhookPayload = {

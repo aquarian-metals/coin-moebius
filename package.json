@@ -7,16 +7,55 @@
 		"packages/server",
 		"packages/providers/template",
 		"packages/providers/stripe",
-		"packages/providers/monero-cryptomus",
+		"packages/providers/cryptomus",
+		"packages/providers/manual",
 		"examples/static-site-demo"
 	],
 	"scripts": {
-		"build": "npm run build --if-present -w @aquarian-metals/coin-moebius-core -w @aquarian-metals/coin-moebius-server -w @aquarian-metals/coin-moebius-stripe -w @aquarian-metals/coin-moebius-monero-cryptomus -w @aquarian-metals/coin-moebius-provider-template -w @aquarian-metals/coin-moebius -w coin-moebius-demo",
+		"build": "npm run build --if-present -w @aquarian-metals/coin-moebius-core -w @aquarian-metals/coin-moebius-server -w @aquarian-metals/coin-moebius-stripe -w @aquarian-metals/coin-moebius-cryptomus -w @aquarian-metals/coin-moebius-manual -w @aquarian-metals/coin-moebius-provider-template -w @aquarian-metals/coin-moebius -w coin-moebius-demo",
 		"test": "vitest run",
-		"test:watch": "vitest"
+		"test:watch": "vitest",
+		"test:coverage": "vitest run --coverage",
+		"format": "prettier --write .",
+		"format:check": "prettier --check .",
+		"lint": "eslint . --max-warnings=0",
+		"lint:fix": "eslint . --fix",
+		"typecheck": "tsc -p tsconfig.eslint.json --noEmit",
+		"attw": "node scripts/check-types.mjs",
+		"size": "size-limit",
+		"docs": "typedoc",
+		"changeset": "changeset",
+		"version-packages": "changeset version",
+		"release": "npm run build && changeset publish",
+		"verify": "npm run format:check && npm run lint && npm run typecheck && npm run build && npm run test && npm run attw && npm run size",
+		"prepare": "husky"
 	},
 	"devDependencies": {
+		"@arethetypeswrong/cli": "^0.16.4",
+		"@changesets/changelog-github": "^0.5.0",
+		"@changesets/cli": "^2.27.9",
+		"@eslint/js": "^9.13.0",
+		"@size-limit/preset-small-lib": "^11.1.6",
+		"@vitest/coverage-v8": "^2.1.9",
+		"eslint": "^9.13.0",
+		"globals": "^15.11.0",
+		"happy-dom": "^15.7.4",
+		"husky": "^9.1.6",
+		"lint-staged": "^15.2.10",
+		"prettier": "^3.3.3",
+		"size-limit": "^11.1.6",
+		"typedoc": "^0.28.0",
 		"typescript": "~5.8.0",
+		"typescript-eslint": "^8.12.0",
 		"vitest": "^2.1.9"
+	},
+	"lint-staged": {
+		"*.{ts,tsx,js,mjs,cjs}": [
+			"prettier --write",
+			"eslint --fix"
+		],
+		"*.{json,md,yml,yaml,html}": [
+			"prettier --write"
+		]
 	}
 }

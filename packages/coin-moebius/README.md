@@ -14,7 +14,7 @@ That's it for the browser core. Add the providers you actually use:
 
 ```bash
 npm install @aquarian-metals/coin-moebius-stripe
-npm install @aquarian-metals/coin-moebius-monero-cryptomus
+npm install @aquarian-metals/coin-moebius-cryptomus
 ```
 
 ## Use

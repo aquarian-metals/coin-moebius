@@ -1,5 +1,9 @@
 node_modules/
 dist/
+coverage/
+docs/api/
+*.tsbuildinfo
+.eslintcache
 *.log
 .DS_Store
 .env

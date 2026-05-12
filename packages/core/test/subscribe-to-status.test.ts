@@ -41,7 +41,7 @@ describe('manager.subscribeToStatus', () => {
 		const stop = payments.subscribeToStatus(
 			'p1',
 			{ statusEndpoint: '/api/status', onPending, onSuccess },
-			{ pollIntervalMs: 1000, timeoutMs: 60_000 }
+			{ pollIntervalMs: 1000, timeoutMs: 60_000 },
 		);
 
 		await vi.advanceTimersByTimeAsync(1100);
@@ -67,7 +67,7 @@ describe('manager.subscribeToStatus', () => {
 		payments.subscribeToStatus(
 			'p1',
 			{ statusEndpoint: '/api/status', onPending, onSuccess },
-			{ pollIntervalMs: 1000 }
+			{ pollIntervalMs: 1000 },
 		);
 
 		await vi.advanceTimersByTimeAsync(2200);
@@ -81,14 +81,14 @@ describe('manager.subscribeToStatus', () => {
 
 	it('calls onTimeout once timeoutMs elapses', async () => {
 		vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-			new Response(JSON.stringify(pendingResult()), { status: 200 })
+			new Response(JSON.stringify(pendingResult()), { status: 200 }),
 		);
 		const onTimeout = vi.fn();
 		const payments = buildManager();
 		payments.subscribeToStatus(
 			'p1',
 			{ statusEndpoint: '/api/status', onTimeout },
-			{ pollIntervalMs: 1000, timeoutMs: 5000 }
+			{ pollIntervalMs: 1000, timeoutMs: 5000 },
 		);
 
 		await vi.advanceTimersByTimeAsync(6000);
@@ -107,7 +107,7 @@ describe('manager.subscribeToStatus', () => {
 		payments.subscribeToStatus(
 			'p1',
 			{ statusEndpoint: '/api/status', onSuccess },
-			{ pollIntervalMs: 1000 }
+			{ pollIntervalMs: 1000 },
 		);
 
 		await vi.advanceTimersByTimeAsync(2200);
@@ -122,7 +122,7 @@ describe('manager.subscribeToStatus', () => {
 		const stop = payments.subscribeToStatus(
 			'p1',
 			{ statusEndpoint: '/api/status' },
-			{ pollIntervalMs: 1000 }
+			{ pollIntervalMs: 1000 },
 		);
 		stop();
 		await vi.advanceTimersByTimeAsync(5000);

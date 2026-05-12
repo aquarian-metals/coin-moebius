@@ -13,6 +13,10 @@ export default async (req) => {
 	}
 	const record = await store.get(paymentId);
 	return record
-		? { statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(record) }
+		? {
+				statusCode: 200,
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(record),
+			}
 		: { statusCode: 404 };
 };

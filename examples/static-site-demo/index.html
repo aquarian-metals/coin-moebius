@@ -1,34 +1,53 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-	<meta charset="UTF-8" />
-	<meta name="viewport" content="width=device-width, initial-scale=1" />
-	<title>Coin Moebius demo • static site</title>
-	<style>
-		body { font-family: system-ui, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; }
-		.tile { border: 2px solid #ddd; border-radius: 12px; padding: 20px; cursor: pointer; transition: all 0.2s; }
-		.tile:hover { border-color: #000; transform: translateY(-2px); }
-		.pending { background: #f0f0f0; padding: 20px; border-radius: 8px; margin-top: 20px; }
-	</style>
-</head>
-<body>
-	<h1>Coin Moebius demo</h1>
-	<p>Buy the "Ultimate JAMstack Guide" for $19.99</p>
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Coin Moebius demo • static site</title>
+		<style>
+			body {
+				font-family: system-ui, sans-serif;
+				max-width: 800px;
+				margin: 40px auto;
+				padding: 20px;
+			}
+			.tile {
+				border: 2px solid #ddd;
+				border-radius: 12px;
+				padding: 20px;
+				cursor: pointer;
+				transition: all 0.2s;
+			}
+			.tile:hover {
+				border-color: #000;
+				transform: translateY(-2px);
+			}
+			.pending {
+				background: #f0f0f0;
+				padding: 20px;
+				border-radius: 8px;
+				margin-top: 20px;
+			}
+		</style>
+	</head>
+	<body>
+		<h1>Coin Moebius demo</h1>
+		<p>Buy the "Ultimate JAMstack Guide" for $19.99</p>
 
-	<div style="display:flex; gap:20px; margin-top:30px;">
-		<div class="tile" id="stripe-tile" style="flex:1">
-			<h3>💳 Pay with Stripe</h3>
-			<p>Instant credit card checkout</p>
+		<div style="display: flex; gap: 20px; margin-top: 30px">
+			<div class="tile" id="stripe-tile" style="flex: 1">
+				<h3>💳 Pay with Stripe</h3>
+				<p>Instant credit card checkout</p>
+			</div>
+
+			<div class="tile" id="monero-tile" style="flex: 1">
+				<h3>🪙 Pay with Monero</h3>
+				<p>Private • No KYC • via Cryptomus</p>
+			</div>
 		</div>
 
-		<div class="tile" id="monero-tile" style="flex:1">
-			<h3>🪙 Pay with Monero</h3>
-			<p>Private • No KYC • via Cryptomus</p>
-		</div>
-	</div>
+		<div id="status" class="pending" style="display: none"></div>
 
-	<div id="status" class="pending" style="display:none"></div>
-
-	<script type="module" src="/main.js"></script>
-</body>
+		<script type="module" src="/main.js"></script>
+	</body>
 </html>

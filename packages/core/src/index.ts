@@ -1,6 +1,6 @@
-import type { PaymentProvider, InitiateOptions, PaymentResult } from './types';
+import type { PaymentProvider, InitiateOptions, PaymentResult } from './types.js';
 
-export type { PaymentProvider, InitiateOptions, PaymentResult } from './types';
+export type { PaymentProvider, InitiateOptions, PaymentResult } from './types.js';
 
 export interface PaymentManagerConfig {
 	providers: PaymentProvider[];
@@ -10,14 +10,14 @@ export function createPaymentManager(config: PaymentManagerConfig) {
 	const providerMap = new Map(config.providers.map((p) => [p.id, p]));
 
 	const listeners = {
-		success: [] as Array<(result: PaymentResult) => void>,
-		pending: [] as Array<(result: PaymentResult) => void>,
-		error: [] as Array<(error: Error) => void>,
+		success: [] as ((result: PaymentResult) => void)[],
+		pending: [] as ((result: PaymentResult) => void)[],
+		error: [] as ((error: Error) => void)[],
 	};
 
 	const manager = {
 		initiate(options: InitiateOptions) {
-			const providerId = options.providerId || config.providers[0]?.id;
+			const providerId = options.providerId ?? config.providers[0]?.id;
 			const provider = providerMap.get(providerId);
 
 			if (!provider) {
@@ -52,6 +52,26 @@ export function createPaymentManager(config: PaymentManagerConfig) {
 			};
 		},
 
+		/**
+		 * Browser-side polling helper for delayed-confirmation flows (Monero
+		 * block confirmations, Cryptomus async settlement, etc.). Hits an HTTP
+		 * status endpoint on a configurable interval until the payment lands
+		 * in `success` (or `pending`, repeatedly, until `timeoutMs`).
+		 *
+		 * Note: there's a sibling helper on the server side —
+		 * `createStatusSubscriber(store)` in `@aquarian-metals/coin-moebius-server`.
+		 * The split is by environment:
+		 *
+		 * - **This one** (browser): polls an HTTP endpoint via `fetch`. Use
+		 *   when the polling happens in the buyer's browser.
+		 * - **Server version**: polls a `PaymentStore` directly. Use when
+		 *   the polling happens server-side (e.g., a worker waiting for a
+		 *   delayed webhook before triggering downstream logic).
+		 *
+		 * They have different signatures because they read from different
+		 * data sources; they share no implementation. Pick the one whose
+		 * environment matches your call site.
+		 */
 		subscribeToStatus(
 			paymentId: string,
 			handlers: {
@@ -60,33 +80,40 @@ export function createPaymentManager(config: PaymentManagerConfig) {
 				onSuccess?: (result: PaymentResult) => void;
 				onTimeout?: () => void;
 			},
-			options: { pollIntervalMs?: number; timeoutMs?: number } = {}
+			options: { pollIntervalMs?: number; timeoutMs?: number } = {},
 		) {
 			const { statusEndpoint, onPending, onSuccess, onTimeout } = handlers;
 			const { pollIntervalMs = 15000, timeoutMs = 30 * 60 * 1000 } = options;
 			const start = Date.now();
 
-			const interval = setInterval(async () => {
-				if (Date.now() - start > timeoutMs) {
-					clearInterval(interval);
-					onTimeout?.();
-					return;
-				}
-
-				try {
-					const url = `${statusEndpoint}?paymentId=${encodeURIComponent(paymentId)}`;
-					const res = await fetch(url);
-					if (!res.ok) return;
-					const record = (await res.json()) as PaymentResult;
-
-					if (record.status === 'pending') onPending?.(record);
-					if (record.status === 'success') {
+			// setInterval expects a sync callback; we run async work inside an
+			// IIFE wrapped with `void` so the returned promise is explicitly
+			// fire-and-forget. The downside (a slow fetch may overlap with the
+			// next tick) is a known Phase 3 candidate for refactoring to a
+			// setTimeout chain that awaits before scheduling the next call.
+			const interval = setInterval(() => {
+				void (async () => {
+					if (Date.now() - start > timeoutMs) {
 						clearInterval(interval);
-						onSuccess?.(record);
+						onTimeout?.();
+						return;
 					}
-				} catch {
-					/* poll again */
-				}
+
+					try {
+						const url = `${statusEndpoint}?paymentId=${encodeURIComponent(paymentId)}`;
+						const res = await fetch(url);
+						if (!res.ok) return;
+						const record = (await res.json()) as PaymentResult;
+
+						if (record.status === 'pending') onPending?.(record);
+						if (record.status === 'success') {
+							clearInterval(interval);
+							onSuccess?.(record);
+						}
+					} catch {
+						/* poll again */
+					}
+				})();
 			}, pollIntervalMs);
 
 			return () => clearInterval(interval);

@@ -1,0 +1,23 @@
+{
+	"$schema": "https://typedoc.org/schema.json",
+	"entryPoints": [
+		"packages/core",
+		"packages/coin-moebius",
+		"packages/server",
+		"packages/providers/stripe",
+		"packages/providers/cryptomus",
+		"packages/providers/manual"
+	],
+	"entryPointStrategy": "packages",
+	"out": "docs/api",
+	"readme": "none",
+	"includeVersion": true,
+	"hideGenerator": true,
+	"navigationLinks": {
+		"GitHub": "https://github.com/aquarian-metals/coin-moebius",
+		"npm": "https://www.npmjs.com/package/@aquarian-metals/coin-moebius"
+	},
+	"sort": ["source-order"],
+	"excludePrivate": true,
+	"excludeInternal": true
+}

@@ -1,6 +1,6 @@
 {
 	"name": "@aquarian-metals/coin-moebius-provider-template",
-	"version": "0.1.0-beta.1",
+	"version": "0.2.0",
 	"description": "Starter template for building a Coin Moebius payment provider. Copy this folder, rename, implement initiate() and an optional ./server verifier.",
 	"keywords": [
 		"payments",
@@ -42,10 +42,10 @@
 		"node": ">=18"
 	},
 	"peerDependencies": {
-		"@aquarian-metals/coin-moebius-core": "^0.1.0-beta.1"
+		"@aquarian-metals/coin-moebius-core": "^0.2.0"
 	},
 	"devDependencies": {
-		"@aquarian-metals/coin-moebius-core": "^0.1.0-beta.1",
+		"@aquarian-metals/coin-moebius-core": "^0.2.0",
 		"typescript": "~5.8.0"
 	},
 	"publishConfig": {

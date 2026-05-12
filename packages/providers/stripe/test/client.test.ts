@@ -28,7 +28,7 @@ describe('createStripeProvider (browser)', () => {
 		const onError = vi.fn();
 		await provider.initiate(
 			{ productId: 'sku-1', amount: 19.99, currency: 'USD', metadata: { tier: 'pro' } },
-			{ onSuccess: vi.fn(), onError, onPending: vi.fn() }
+			{ onSuccess: vi.fn(), onError, onPending: vi.fn() },
 		);
 
 		expect(onError).not.toHaveBeenCalled();
@@ -54,10 +54,10 @@ describe('createStripeProvider (browser)', () => {
 
 		await provider.initiate(
 			{ productId: 'p', amount: 1, currency: 'USD' },
-			{ onSuccess: vi.fn(), onError: vi.fn(), onPending: vi.fn() }
+			{ onSuccess: vi.fn(), onError: vi.fn(), onPending: vi.fn() },
 		);
 
-		expect(fetchMock.mock.calls[0][0]).toBe('/.netlify/functions/create-stripe-session');
+		expect(fetchMock.mock.calls[0][0]).toBe('/api/checkout/stripe');
 	});
 
 	it('routes a non-OK session response to onError', async () => {
@@ -67,7 +67,7 @@ describe('createStripeProvider (browser)', () => {
 
 		await provider.initiate(
 			{ productId: 'p', amount: 1, currency: 'USD' },
-			{ onSuccess: vi.fn(), onError, onPending: vi.fn() }
+			{ onSuccess: vi.fn(), onError, onPending: vi.fn() },
 		);
 
 		expect(onError).toHaveBeenCalledOnce();
@@ -76,7 +76,7 @@ describe('createStripeProvider (browser)', () => {
 
 	it('routes a Stripe redirect error to onError', async () => {
 		vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-			new Response(JSON.stringify({ sessionId: 'cs_x' }), { status: 200 })
+			new Response(JSON.stringify({ sessionId: 'cs_x' }), { status: 200 }),
 		);
 		redirectToCheckout.mockResolvedValueOnce({ error: new Error('redirect failed') });
 		const provider = createStripeProvider({ publishableKey: 'pk_test' });
@@ -84,7 +84,7 @@ describe('createStripeProvider (browser)', () => {
 
 		await provider.initiate(
 			{ productId: 'p', amount: 1, currency: 'USD' },
-			{ onSuccess: vi.fn(), onError, onPending: vi.fn() }
+			{ onSuccess: vi.fn(), onError, onPending: vi.fn() },
 		);
 
 		expect(onError).toHaveBeenCalledOnce();
