@@ -21,6 +21,11 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      # Build first so inter-workspace imports (e.g., providers/cryptomus
+      # importing types from coin-moebius-core) can resolve through each
+      # package's `main`/`types` fields. Without dist/ in place, ESLint's
+      # type-checked rules fall back to `any` and report unsafe-* errors.
+      - run: npm run build
       - run: npm run format:check
       - run: npm run lint
       - run: npm run typecheck
@@ -39,6 +44,10 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
+      # Build before test so the coin-moebius re-export smoke test (which
+      # imports from `@aquarian-metals/coin-moebius-core` to verify the
+      # re-export's identity) can resolve the package's entry point.
+      - run: npm run build
       - run: npm test
       - name: Coverage (Node 20 only)
         if: matrix.node == 20
