@@ -1,5 +1,13 @@
 # @aquarian-metals/coin-moebius-core
 
+## 0.3.0
+
+### Minor Changes
+
+- Lockstep release with two new sibling packages. No breaking changes in `-core` itself; this version aligns its number with the rest of the monorepo:
+  - **NEW** `@aquarian-metals/coin-moebius-nowpayments` — US-friendly crypto provider (Cryptomus is geo-blocked in the US). Hosted invoice flow + IPN webhook verifier (HMAC-SHA512 over recursively-sorted JSON).
+  - **NEW** `@aquarian-metals/coin-moebius-element` — `<coin-moebius-buy>` custom element. Drop-in HTML element with a self-initializing button + provider-picker modal. CSS-customizable via custom properties and `::part()` selectors. Full focus trap, Escape-to-close, Tab/Shift+Tab cycling, ARIA dialog/group semantics.
+
 ## 0.2.0
 
 ### Minor Changes

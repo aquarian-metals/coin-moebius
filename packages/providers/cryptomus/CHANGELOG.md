@@ -1,5 +1,13 @@
 # @aquarian-metals/coin-moebius-cryptomus
 
+## 0.3.0
+
+### Minor Changes
+
+- Lockstep release with two new sibling packages. Cryptomus integration itself is unchanged; this version aligns its number with the rest of the monorepo:
+  - **NEW** `@aquarian-metals/coin-moebius-nowpayments` — US-friendly crypto provider, recommended over Cryptomus for US-based merchants (Cryptomus is geo-blocked in the US).
+  - **NEW** `@aquarian-metals/coin-moebius-element` — `<coin-moebius-buy>` drop-in custom element.
+
 ## 0.2.0
 
 ### Minor Changes

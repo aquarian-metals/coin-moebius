@@ -1,5 +1,13 @@
 # @aquarian-metals/coin-moebius-server
 
+## 0.3.0
+
+### Minor Changes
+
+- Lockstep release. The server package itself is unchanged; this version aligns its number with the rest of the monorepo so consumers can install matching versions across all packages:
+  - **NEW** `@aquarian-metals/coin-moebius-nowpayments` — US-friendly crypto provider, with the IPN webhook verifier exported from `@aquarian-metals/coin-moebius-nowpayments/server`.
+  - **NEW** `@aquarian-metals/coin-moebius-element` — drop-in `<coin-moebius-buy>` custom element (browser-only; no server piece).
+
 ## 0.2.0
 
 ### Minor Changes

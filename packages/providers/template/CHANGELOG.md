@@ -1,5 +1,11 @@
 # @aquarian-metals/coin-moebius-provider-template
 
+## 0.3.0
+
+### Minor Changes
+
+- Lockstep release. Template itself is unchanged; new sibling packages this cycle are `@aquarian-metals/coin-moebius-nowpayments` (US-friendly crypto provider) and `@aquarian-metals/coin-moebius-element` (the `<coin-moebius-buy>` custom element).
+
 ## 0.2.0
 
 ### Minor Changes

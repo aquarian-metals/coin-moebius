@@ -1,6 +1,6 @@
 {
 	"name": "@aquarian-metals/coin-moebius-manual",
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"description": "Manual / async payment provider for Coin Moebius — covers Goldbacks, cash in mail, wire transfer, personal check, barter, and any 'I'll confirm receipt by hand' payment method.",
 	"keywords": [
 		"payments",
@@ -48,10 +48,10 @@
 		"node": ">=18"
 	},
 	"peerDependencies": {
-		"@aquarian-metals/coin-moebius-core": "^0.2.0"
+		"@aquarian-metals/coin-moebius-core": "^0.3.0"
 	},
 	"devDependencies": {
-		"@aquarian-metals/coin-moebius-core": "^0.2.0",
+		"@aquarian-metals/coin-moebius-core": "^0.3.0",
 		"typescript": "~5.8.0"
 	},
 	"publishConfig": {

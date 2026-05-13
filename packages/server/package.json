@@ -1,6 +1,6 @@
 {
 	"name": "@aquarian-metals/coin-moebius-server",
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"description": "Server-side webhook verification + payment status helpers for Coin Moebius. Node / serverless only — never import in browser bundles.",
 	"keywords": [
 		"payments",
@@ -43,7 +43,7 @@
 		"node": ">=18"
 	},
 	"dependencies": {
-		"@aquarian-metals/coin-moebius-core": "^0.2.0"
+		"@aquarian-metals/coin-moebius-core": "^0.3.0"
 	},
 	"devDependencies": {
 		"typescript": "~5.8.0"

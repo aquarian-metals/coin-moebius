@@ -1,5 +1,13 @@
 # @aquarian-metals/coin-moebius-manual
 
+## 0.3.0
+
+### Minor Changes
+
+- Lockstep release with two new sibling packages. Manual provider itself is unchanged; this version aligns its number with the rest of the monorepo:
+  - **NEW** `@aquarian-metals/coin-moebius-nowpayments` — US-friendly crypto provider.
+  - **NEW** `@aquarian-metals/coin-moebius-element` — `<coin-moebius-buy>` drop-in custom element.
+
 ## 0.2.0
 
 ### Minor Changes
