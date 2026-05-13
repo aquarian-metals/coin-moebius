@@ -1,0 +1,59 @@
+{
+	"name": "@aquarian-metals/coin-moebius-nowpayments",
+	"version": "0.2.0",
+	"description": "NOWPayments provider for Coin Moebius — hosted invoice flow for crypto checkout, plus a server-only IPN verifier under the ./server subpath. US-friendly alternative to Cryptomus.",
+	"keywords": [
+		"payments",
+		"nowpayments",
+		"crypto",
+		"checkout",
+		"webhook",
+		"coin-moebius"
+	],
+	"author": "aquarian-metals",
+	"license": "MIT",
+	"homepage": "https://github.com/aquarian-metals/coin-moebius#readme",
+	"bugs": {
+		"url": "https://github.com/aquarian-metals/coin-moebius/issues"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/aquarian-metals/coin-moebius.git",
+		"directory": "packages/providers/nowpayments"
+	},
+	"type": "module",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"sideEffects": false,
+	"files": [
+		"dist"
+	],
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		},
+		"./server": {
+			"types": "./dist/server.d.ts",
+			"import": "./dist/server.js"
+		},
+		"./package.json": "./package.json"
+	},
+	"scripts": {
+		"clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+		"build": "npm run clean && tsc",
+		"prepublishOnly": "npm run build"
+	},
+	"engines": {
+		"node": ">=18"
+	},
+	"dependencies": {
+		"@aquarian-metals/coin-moebius-core": "^0.2.0"
+	},
+	"devDependencies": {
+		"typescript": "~5.8.0"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
+}

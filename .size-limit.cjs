@@ -33,8 +33,18 @@ module.exports = [
 		limit: '3 KB',
 	},
 	{
+		name: 'coin-moebius-nowpayments (client)',
+		path: 'packages/providers/nowpayments/dist/index.js',
+		limit: '3 KB',
+	},
+	{
 		name: 'coin-moebius-manual (client)',
 		path: 'packages/providers/manual/dist/index.js',
 		limit: '6 KB',
+	},
+	{
+		name: 'coin-moebius-element (custom element + styles)',
+		path: 'packages/element/dist/index.js',
+		limit: '8 KB',
 	},
 ];

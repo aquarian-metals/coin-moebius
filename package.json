@@ -4,15 +4,18 @@
 	"workspaces": [
 		"packages/core",
 		"packages/coin-moebius",
+		"packages/element",
 		"packages/server",
 		"packages/providers/template",
 		"packages/providers/stripe",
 		"packages/providers/cryptomus",
+		"packages/providers/nowpayments",
 		"packages/providers/manual",
 		"examples/static-site-demo"
 	],
 	"scripts": {
-		"build": "npm run build --if-present -w @aquarian-metals/coin-moebius-core -w @aquarian-metals/coin-moebius-server -w @aquarian-metals/coin-moebius-stripe -w @aquarian-metals/coin-moebius-cryptomus -w @aquarian-metals/coin-moebius-manual -w @aquarian-metals/coin-moebius-provider-template -w @aquarian-metals/coin-moebius -w coin-moebius-demo",
+		"build": "npm run build --if-present -w @aquarian-metals/coin-moebius-core -w @aquarian-metals/coin-moebius-server -w @aquarian-metals/coin-moebius-stripe -w @aquarian-metals/coin-moebius-cryptomus -w @aquarian-metals/coin-moebius-nowpayments -w @aquarian-metals/coin-moebius-manual -w @aquarian-metals/coin-moebius-provider-template -w @aquarian-metals/coin-moebius -w @aquarian-metals/coin-moebius-element -w coin-moebius-demo",
+		"build:cdn": "npm run build && node scripts/build-cdn.mjs",
 		"test": "vitest run",
 		"test:watch": "vitest",
 		"test:coverage": "vitest run --coverage",
