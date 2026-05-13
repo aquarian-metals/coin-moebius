@@ -97,4 +97,157 @@ describe('createStripeVerifier', () => {
 		const { body, headers } = signedRequest({ id: 'evt_4', type: 'noop', data: { object: {} } });
 		await expect(verify(body + 'tampered', headers)).rejects.toThrow(/invalid signature/);
 	});
+
+	it('treats a paid session with status=open as success (payment_status side of ||)', async () => {
+		// `payment_status === 'paid'` should be sufficient even if `status` is
+		// still `open` (Stripe sometimes lags status transitions). Covers the
+		// short-circuit on the left side of the OR.
+		const verify = createStripeVerifier({ endpointSecret: ENDPOINT_SECRET });
+		const event = {
+			id: 'evt_paid_open',
+			object: 'event',
+			type: 'checkout.session.completed',
+			data: {
+				object: {
+					id: 'cs_paid_open',
+					object: 'checkout.session',
+					payment_status: 'paid',
+					status: 'open',
+					amount_total: 1000,
+					currency: 'usd',
+				},
+			},
+		};
+		const { body, headers } = signedRequest(event);
+		const result = await verify(body, headers);
+		expect(result.status).toBe('success');
+	});
+
+	it('treats an unpaid checkout.session.completed as pending', async () => {
+		// Neither `payment_status === 'paid'` nor `status === 'complete'` — falls
+		// through past the success branch into the pending tail return.
+		const verify = createStripeVerifier({ endpointSecret: ENDPOINT_SECRET });
+		const event = {
+			id: 'evt_unpaid',
+			object: 'event',
+			type: 'checkout.session.completed',
+			data: {
+				object: {
+					id: 'cs_unpaid',
+					object: 'checkout.session',
+					payment_status: 'unpaid',
+					status: 'open',
+				},
+			},
+		};
+		const { body, headers } = signedRequest(event);
+		const result = await verify(body, headers);
+		expect(result.status).toBe('pending');
+		expect(result.paymentId).toBe('cs_unpaid');
+	});
+
+	it('treats payment_intent.succeeded with status=requires_action as pending', async () => {
+		// `pi.status !== 'succeeded'` — falls through past the success branch.
+		const verify = createStripeVerifier({ endpointSecret: ENDPOINT_SECRET });
+		const event = {
+			id: 'evt_pi_pending',
+			object: 'event',
+			type: 'payment_intent.succeeded',
+			data: {
+				object: {
+					id: 'pi_pending',
+					object: 'payment_intent',
+					status: 'requires_action',
+				},
+			},
+		};
+		const { body, headers } = signedRequest(event);
+		const result = await verify(body, headers);
+		expect(result.status).toBe('pending');
+		expect(result.paymentId).toBe('pi_pending');
+	});
+
+	it('falls back to defaults when amount_total / currency / metadata / email are absent', async () => {
+		// Exercises every `??` and `?.` along the checkout success path.
+		const verify = createStripeVerifier({ endpointSecret: ENDPOINT_SECRET });
+		const event = {
+			id: 'evt_sparse',
+			object: 'event',
+			type: 'checkout.session.completed',
+			data: {
+				object: {
+					id: 'cs_sparse',
+					object: 'checkout.session',
+					payment_status: 'paid',
+					status: 'complete',
+				},
+			},
+		};
+		const { body, headers } = signedRequest(event);
+		const result = await verify(body, headers);
+		expect(result.status).toBe('success');
+		expect(result.amount).toBe(0);
+		expect(result.currency).toBe('USD');
+		expect(result.metadata).toMatchObject({ email: undefined });
+	});
+
+	it('uses customer_details.email when set, ignoring customer_email', async () => {
+		// Left side of `customer_details?.email ?? customer_email` — confirms
+		// the deeper-nested path wins.
+		const verify = createStripeVerifier({ endpointSecret: ENDPOINT_SECRET });
+		const event = {
+			id: 'evt_cd_email',
+			object: 'event',
+			type: 'checkout.session.completed',
+			data: {
+				object: {
+					id: 'cs_cd_email',
+					object: 'checkout.session',
+					payment_status: 'paid',
+					status: 'complete',
+					customer_details: { email: 'fromdetails@example.com' },
+					customer_email: 'ignored@example.com',
+				},
+			},
+		};
+		const { body, headers } = signedRequest(event);
+		const result = await verify(body, headers);
+		expect((result.metadata as { email: string }).email).toBe('fromdetails@example.com');
+	});
+
+	it('falls back to defaults on payment_intent.succeeded with no amount/currency/metadata', async () => {
+		const verify = createStripeVerifier({ endpointSecret: ENDPOINT_SECRET });
+		const event = {
+			id: 'evt_pi_sparse',
+			object: 'event',
+			type: 'payment_intent.succeeded',
+			data: {
+				object: {
+					id: 'pi_sparse',
+					object: 'payment_intent',
+					status: 'succeeded',
+				},
+			},
+		};
+		const { body, headers } = signedRequest(event);
+		const result = await verify(body, headers);
+		expect(result.amount).toBe(0);
+		expect(result.currency).toBe('USD');
+	});
+
+	it('returns paymentId="unknown" when the event data has no id', async () => {
+		// Pending-tail fallback: `'id' in event.data.object && typeof … === 'string'`
+		// is false → 'unknown' wins.
+		const verify = createStripeVerifier({ endpointSecret: ENDPOINT_SECRET });
+		const event = {
+			id: 'evt_no_id',
+			object: 'event',
+			type: 'customer.created',
+			data: { object: { object: 'customer' } },
+		};
+		const { body, headers } = signedRequest(event);
+		const result = await verify(body, headers);
+		expect(result.status).toBe('pending');
+		expect(result.paymentId).toBe('unknown');
+	});
 });

@@ -1,0 +1,9 @@
+# Pre-push gate. Runs the same `verify` chain CI runs so a coverage drop /
+# attw regression / size budget bust fails the push before it ever hits
+# GitHub Actions. Slower than pre-commit (~10s for verify on a clean cache),
+# but only runs on push, which is rare relative to commits.
+#
+# Skip in an emergency with `git push --no-verify`. Don't make it a habit;
+# the next CI run will surface what you skipped.
+
+npm run verify
