@@ -442,7 +442,7 @@ export class CoinMoebiusBuyElement extends HTMLElement {
 		if (this.modalKeydownHandler) {
 			(shadow as unknown as EventTarget).removeEventListener('keydown', this.modalKeydownHandler);
 		}
-		this.modalKeydownHandler = ((event: Event) => {
+		this.modalKeydownHandler = (event: Event) => {
 			const kbd = event as KeyboardEvent;
 			if (kbd.key === 'Escape') {
 				kbd.preventDefault();
@@ -462,7 +462,7 @@ export class CoinMoebiusBuyElement extends HTMLElement {
 
 			kbd.preventDefault();
 			focusables[nextIndex].focus();
-		});
+		};
 		(shadow as unknown as EventTarget).addEventListener('keydown', this.modalKeydownHandler);
 	}
 
