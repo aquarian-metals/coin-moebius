@@ -12,13 +12,12 @@
 			"@aquarian-metals/coin-moebius-nowpayments",
 			"@aquarian-metals/coin-moebius-monero",
 			"@aquarian-metals/coin-moebius-manual",
-			"@aquarian-metals/coin-moebius-provider-template",
-			"@aquarian-metals/coin-moebius-element"
+			"@aquarian-metals/coin-moebius-provider-template"
 		]
 	],
 	"linked": [],
 	"access": "public",
 	"baseBranch": "main",
 	"updateInternalDependencies": "patch",
-	"ignore": ["coin-moebius-demo"]
+	"ignore": ["coin-moebius-demo", "@aquarian-metals/coin-moebius-element"]
 }
