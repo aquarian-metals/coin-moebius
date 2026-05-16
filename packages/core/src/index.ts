@@ -1,6 +1,6 @@
 import type { PaymentProvider, InitiateOptions, PaymentResult } from './types.js';
 
-export type { PaymentProvider, InitiateOptions, PaymentResult } from './types.js';
+export type { PaymentProvider, InitiateOptions, PaymentResult, PaymentStatus } from './types.js';
 
 export interface PaymentManagerConfig {
 	providers: PaymentProvider[];

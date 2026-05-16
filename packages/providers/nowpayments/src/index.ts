@@ -9,8 +9,8 @@
  * The server-side IPN verifier lives at `./server` so this client-only entry
  * doesn't pull NOWPayments-specific Node/Web crypto into browser bundles.
  *
- *     import { createNowPaymentsCreator } from '@aquarian-metals/coin-moebius-nowpayments';
- *     const nowpayments = createNowPaymentsCreator({
+ *     import { createNowPaymentsProvider } from '@aquarian-metals/coin-moebius-nowpayments';
+ *     const nowpayments = createNowPaymentsProvider({
  *       checkoutEndpoint: 'https://api.coinmoebius.com/api/checkout/nowpayments/proj_xxx',
  *     });
  *
@@ -24,7 +24,7 @@ import type {
 } from '@aquarian-metals/coin-moebius-core';
 
 /** Client-side config. The customer's API key + IPN secret stay server-side. */
-export interface NowPaymentsCreatorConfig {
+export interface NowPaymentsProviderConfig {
 	/** Full URL of the checkout endpoint that returns `{ url: invoice_url }`. */
 	checkoutEndpoint: string;
 	/**
@@ -52,7 +52,7 @@ interface CheckoutResponse {
  * also call `manager.subscribeToStatus(paymentId, …)` after `initiate`
  * resolves.
  */
-export function createNowPaymentsCreator(config: NowPaymentsCreatorConfig): PaymentProvider {
+export function createNowPaymentsProvider(config: NowPaymentsProviderConfig): PaymentProvider {
 	const fetcher = config.fetcher ?? globalThis.fetch.bind(globalThis);
 	const navigate =
 		config.navigate ??

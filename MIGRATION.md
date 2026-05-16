@@ -46,7 +46,31 @@ The `@aquarian-metals/coin-moebius-monero-cryptomus` package was misleadingly na
 
 **Metadata field rename:** if you read `result.metadata.amountXMR` from the Cryptomus payment, it's now `result.metadata.cryptomusAmount` (the name is coin-neutral since Cryptomus supports many).
 
-### 2. Server verifier registry is now a factory
+### 2. NOWPayments factory renamed
+
+The `@aquarian-metals/coin-moebius-nowpayments` package's browser-side factory was misnamed — every other provider package uses the `createXProvider` convention (`createStripeProvider`, `createCryptomusProvider`), but the NOWPayments equivalent shipped as `createNowPaymentsCreator`. It's now `createNowPaymentsProvider`.
+
+**In your imports:**
+
+```diff
+-import { createNowPaymentsCreator } from '@aquarian-metals/coin-moebius-nowpayments';
++import { createNowPaymentsProvider } from '@aquarian-metals/coin-moebius-nowpayments';
+```
+
+**At the call site:**
+
+```diff
+-const nowpayments = createNowPaymentsCreator({
++const nowpayments = createNowPaymentsProvider({
+   checkoutEndpoint: '/.netlify/functions/create-nowpayments-payment',
+ });
+```
+
+**Config type rename:** `NowPaymentsCreatorConfig` → `NowPaymentsProviderConfig`.
+
+The server-side `createNowPaymentsVerifier` is unchanged. Behavior is unchanged — this is a pure rename to match the other providers.
+
+### 3. Server verifier registry is now a factory
 
 The top-level `registerVerifier`/`verify` exports from `@aquarian-metals/coin-moebius-server` are gone. The new API is a factory that returns a per-instance registry:
 
@@ -129,6 +153,22 @@ The default endpoints for Stripe and Cryptomus client providers moved from `/.ne
 ```
 
 If you've already moved off Netlify (or were planning to), the new defaults work out-of-the-box on Cloudflare Workers, Vercel, Express, and any other host where you serve the matching path.
+
+### 6. New: self-hosted Monero provider
+
+The new `@aquarian-metals/coin-moebius-monero` package is purely additive — no existing integration changes. If you want it:
+
+```bash
+npm install @aquarian-metals/coin-moebius-monero
+```
+
+See `packages/providers/monero/README.md` for the full self-hosting walkthrough (three deployment tiers: solo / small-business / scale) and `examples/static-site-demo/monero/` for copy-paste serverless functions, an indexer, a systemd unit, and an optional docker-compose recipe.
+
+### 7. New optional `PaymentStore.markStatusAnnounced` (non-breaking)
+
+`@aquarian-metals/coin-moebius-server` now exposes an **optional** `markStatusAnnounced(paymentId, status)` method on the `PaymentStore` interface. Existing store implementations (including the in-repo `createMemoryStore`) satisfy the interface without changes. The Monero indexer uses the method when present to guarantee exactly-once webhook emission across HA replicas; falls back to a read-then-write idempotency check when absent. Production stores planning to run the Monero indexer in HA mode should implement it.
+
+No action required if you're not running the Monero indexer in HA mode.
 
 ## How to verify after upgrading
 

@@ -10,6 +10,7 @@
 			"@aquarian-metals/coin-moebius-stripe",
 			"@aquarian-metals/coin-moebius-cryptomus",
 			"@aquarian-metals/coin-moebius-nowpayments",
+			"@aquarian-metals/coin-moebius-monero",
 			"@aquarian-metals/coin-moebius-manual",
 			"@aquarian-metals/coin-moebius-provider-template",
 			"@aquarian-metals/coin-moebius-element"

@@ -1,3 +1,4 @@
+import type { PaymentStatus } from '@aquarian-metals/coin-moebius-core';
 import type { PaymentRecord, PaymentStore } from './types.js';
 
 /**
@@ -24,6 +25,11 @@ import type { PaymentRecord, PaymentStore } from './types.js';
  */
 export function createMemoryStore(): PaymentStore {
 	const records = new Map<string, PaymentRecord>();
+	// Tracks the `(paymentId, status)` pairs that have already been claimed
+	// via `markStatusAnnounced`. JS is single-threaded so a `Set.has` /
+	// `Set.add` pair is atomic enough to guarantee exactly-once at this
+	// scope. Cross-process / multi-replica deployments need a real store.
+	const announced = new Set<string>();
 
 	return {
 		upsert(record) {
@@ -37,6 +43,12 @@ export function createMemoryStore(): PaymentStore {
 		},
 		get(paymentId) {
 			return Promise.resolve(records.get(paymentId) ?? null);
+		},
+		markStatusAnnounced(paymentId: string, status: PaymentStatus) {
+			const key = `${paymentId}\u0000${status}`;
+			if (announced.has(key)) return Promise.resolve(false);
+			announced.add(key);
+			return Promise.resolve(true);
 		},
 	};
 }

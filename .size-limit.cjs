@@ -38,6 +38,11 @@ module.exports = [
 		limit: '3 KB',
 	},
 	{
+		name: 'coin-moebius-monero (client)',
+		path: 'packages/providers/monero/dist/index.js',
+		limit: '6 KB',
+	},
+	{
 		name: 'coin-moebius-manual (client)',
 		path: 'packages/providers/manual/dist/index.js',
 		limit: '6 KB',

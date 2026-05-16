@@ -141,32 +141,63 @@ function sortObjectRecursive(value: unknown): unknown {
 	return value;
 }
 
-/** Map NOWPayments payment_status → SDK PaymentResult.status. */
+/**
+ * Map NOWPayments `payment_status` → SDK `PaymentResult.status`.
+ *
+ *   - `finished` → `success` — the canonical happy path.
+ *   - `partially_paid` → `partial` — buyer sent less than invoiced (common
+ *     with crypto when network fees ate into the amount). The SDK's `amount`
+ *     reflects what was actually received (`actually_paid`) so the consumer
+ *     can decide whether to ship.
+ *   - `refunded` → `refunded` — money returned to the buyer. Surface A
+ *     (post-payment events).
+ *   - `failed` / `expired` → `failed` — terminal negative.
+ *   - Everything else (`waiting`, `confirming`, `confirmed`, `sending`) is
+ *     in-flight; mapped to `pending`.
+ */
 function toPaymentResult(payload: NowPaymentsIpnPayload): PaymentResult {
 	const status = payload.payment_status;
-	const mapped: PaymentResult['status'] =
-		status === 'finished'
-			? 'success'
-			: status === 'failed' || status === 'refunded' || status === 'expired'
-				? 'failed'
-				: 'pending';
-
+	const mapped: PaymentResult['status'] = mapPaymentStatus(status);
+	// For partial payments, prefer `actually_paid` (what we received on chain)
+	// over `price_amount` (what we asked for). Consumers compare the two via
+	// metadata to detect underpayments.
+	const amount =
+		mapped === 'partial' && typeof payload.actually_paid === 'number'
+			? payload.actually_paid
+			: payload.price_amount;
 	return {
 		status: mapped,
 		paymentId: String(payload.payment_id ?? payload.order_id),
 		provider: 'nowpayments',
-		amount: payload.price_amount,
+		amount,
 		currency: payload.price_currency.toUpperCase(),
 		metadata: {
 			orderId: payload.order_id,
 			payCurrency: payload.pay_currency,
 			actuallyPaid: payload.actually_paid,
+			invoicedAmount: payload.price_amount,
 			network: payload.network,
 			nowpaymentsStatus: status,
 		},
 		timestamp: Date.now(),
 		raw: payload,
 	};
+}
+
+function mapPaymentStatus(status: string): PaymentResult['status'] {
+	switch (status) {
+		case 'finished':
+			return 'success';
+		case 'partially_paid':
+			return 'partial';
+		case 'refunded':
+			return 'refunded';
+		case 'failed':
+		case 'expired':
+			return 'failed';
+		default:
+			return 'pending';
+	}
 }
 
 function headerValue(

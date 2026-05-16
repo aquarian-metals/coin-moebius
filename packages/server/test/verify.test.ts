@@ -18,7 +18,7 @@ describe('createVerifierRegistry', () => {
 		const result = await verifiers.verify({ foo: 'bar' }, { 'x-provider': 'stripe' });
 
 		expect(stripeVerifier).toHaveBeenCalledOnce();
-		expect(result.provider).toBe('stripe');
+		expect(result?.provider).toBe('stripe');
 	});
 
 	it('falls back to body.provider when no header is present', async () => {
@@ -37,7 +37,7 @@ describe('createVerifierRegistry', () => {
 		const result = await verifiers.verify({ provider: 'cryptomus' }, undefined);
 
 		expect(cryptomusVerifier).toHaveBeenCalledOnce();
-		expect(result.provider).toBe('cryptomus');
+		expect(result?.provider).toBe('cryptomus');
 	});
 
 	it('rejects when no verifier is registered for the resolved provider', async () => {
@@ -101,6 +101,6 @@ describe('createVerifierRegistry', () => {
 
 		expect(newVerifier).toHaveBeenCalledOnce();
 		expect(oldVerifier).not.toHaveBeenCalled();
-		expect(result.paymentId).toBe('new');
+		expect(result?.paymentId).toBe('new');
 	});
 });

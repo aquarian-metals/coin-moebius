@@ -100,9 +100,9 @@ describe('createNowPaymentsVerifier', () => {
 		expect((result.metadata as { orderId: string }).orderId).toBe('tx_abc123');
 	});
 
-	it('maps pending statuses (waiting/confirming/confirmed/sending) to pending', async () => {
+	it('maps in-flight statuses to pending', async () => {
 		const verifier = createNowPaymentsVerifier({ ipnSecret: IPN_SECRET });
-		for (const status of ['waiting', 'confirming', 'confirmed', 'sending', 'partially_paid']) {
+		for (const status of ['waiting', 'confirming', 'confirmed', 'sending']) {
 			const payload = samplePayload({ payment_status: status });
 			const sig = await computeNowPaymentsSignature(payload, IPN_SECRET);
 			const result = await verifier.verify(payload, { 'x-nowpayments-sig': sig });
@@ -110,9 +110,31 @@ describe('createNowPaymentsVerifier', () => {
 		}
 	});
 
-	it('maps failed/refunded/expired to failed', async () => {
+	it('maps partially_paid to partial and reports actually_paid as the amount', async () => {
 		const verifier = createNowPaymentsVerifier({ ipnSecret: IPN_SECRET });
-		for (const status of ['failed', 'refunded', 'expired']) {
+		const payload = samplePayload({
+			payment_status: 'partially_paid',
+			price_amount: 30,
+			actually_paid: 25.5,
+		});
+		const sig = await computeNowPaymentsSignature(payload, IPN_SECRET);
+		const result = await verifier.verify(payload, { 'x-nowpayments-sig': sig });
+		expect(result.status).toBe('partial');
+		expect(result.amount).toBe(25.5);
+		expect(result.metadata).toMatchObject({ actuallyPaid: 25.5, invoicedAmount: 30 });
+	});
+
+	it('maps refunded to refunded (Surface A: refunds reach the merchant)', async () => {
+		const verifier = createNowPaymentsVerifier({ ipnSecret: IPN_SECRET });
+		const payload = samplePayload({ payment_status: 'refunded' });
+		const sig = await computeNowPaymentsSignature(payload, IPN_SECRET);
+		const result = await verifier.verify(payload, { 'x-nowpayments-sig': sig });
+		expect(result.status).toBe('refunded');
+	});
+
+	it('maps failed/expired to failed', async () => {
+		const verifier = createNowPaymentsVerifier({ ipnSecret: IPN_SECRET });
+		for (const status of ['failed', 'expired']) {
 			const payload = samplePayload({ payment_status: status });
 			const sig = await computeNowPaymentsSignature(payload, IPN_SECRET);
 			const result = await verifier.verify(payload, { 'x-nowpayments-sig': sig });

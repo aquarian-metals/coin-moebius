@@ -1,4 +1,4 @@
-import type { PaymentResult } from '@aquarian-metals/coin-moebius-core';
+import type { PaymentResult, PaymentStatus } from '@aquarian-metals/coin-moebius-core';
 
 /**
  * Persistent representation of a payment, suitable for storage in a
@@ -39,4 +39,28 @@ export interface PaymentStore {
 	 * record exists.
 	 */
 	get(paymentId: string): Promise<PaymentRecord | null>;
+
+	/**
+	 * Optional. Atomically claim the right to announce `paymentId` as
+	 * `status`, returning `true` if the caller won the race and should
+	 * proceed (e.g. POST the outbound webhook), or `false` if another caller
+	 * already announced this `(paymentId, status)` pair.
+	 *
+	 * Implementations should perform a single atomic operation — a DB UPSERT
+	 * on a `(paymentId, status)` unique constraint, a Redis `SETNX`, or
+	 * equivalent — so that two concurrent indexer replicas cannot both win.
+	 * Returning `true` even when racing is incorrect; returning `false`
+	 * defensively when uncertain is acceptable (the duplicate is then
+	 * caught by the merchant's webhook-receiver idempotency).
+	 *
+	 * Stores that omit this method are safe for single-process / single-
+	 * indexer deployments. The Monero indexer falls back to a read-then-
+	 * write check in `upsert`/`get`, with deduplication ultimately handled
+	 * by the merchant's webhook endpoint (which has to be idempotent for
+	 * every provider anyway — Stripe, NOWPayments, etc. all resend).
+	 *
+	 * Implement this on production stores (Postgres, D1, DynamoDB) when
+	 * you plan to run the Monero indexer in HA / multi-replica mode.
+	 */
+	markStatusAnnounced?(paymentId: string, status: PaymentStatus): Promise<boolean>;
 }

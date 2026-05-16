@@ -1,6 +1,6 @@
 {
 	"name": "@aquarian-metals/coin-moebius-element",
-	"version": "0.3.0",
+	"version": "1.0.0",
 	"description": "Drop-in <coin-moebius-buy> custom element — paste one script tag and one HTML element, get a working buy button with provider-picker modal. CSS-customizable via custom properties and ::part().",
 	"keywords": [
 		"payments",

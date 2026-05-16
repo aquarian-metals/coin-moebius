@@ -79,7 +79,7 @@ registerVerifier(
 
 ## Related
 
-- Want pure self-hosted Monero (no third-party gateway)? See `@aquarian-metals/coin-moebius-monero` — direct Monero RPC integration. _Coming post-1.0._
+- Want pure self-hosted Monero (no third-party gateway)? See [`@aquarian-metals/coin-moebius-monero`](../monero/README.md) — direct Monero RPC integration.
 - For Stripe, see `@aquarian-metals/coin-moebius-stripe`.
 - For manually-confirmed payments (Goldbacks, cash, check, barter), see `@aquarian-metals/coin-moebius-manual`.
 

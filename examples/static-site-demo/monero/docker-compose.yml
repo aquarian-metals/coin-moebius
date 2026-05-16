@@ -1,0 +1,67 @@
+# Docker compose bundle for self-hosted Monero with Coin Moebius.
+#
+# Disclaimer: this file is a starting point, not a maintained artifact.
+# The image tags below will go stale; you are responsible for tracking
+# Monero releases and applying security updates. Coin Moebius does not
+# publish or maintain a turnkey Docker image — see README.md for why.
+#
+# Before first boot:
+#   1. Create a Monero spend wallet on a separate (cold) box.
+#   2. Export the view-only seed.
+#   3. Restore the view-only wallet into ./wallet-data/view-only.wallet
+#   4. Fill in the env values below.
+#   5. docker compose up -d
+#   6. Watch logs: docker compose logs -f indexer
+#
+# The chain volume is ~250 GB once synced. Plan accordingly.
+
+services:
+  monerod:
+    image: sethforprivacy/simple-monerod:v0.18.3.4
+    container_name: monerod
+    restart: unless-stopped
+    volumes:
+      - ./monero-data:/home/monero/.bitmonero
+    ports:
+      - "18080:18080" # P2P
+    command:
+      - --prune-blockchain
+      - --restricted-rpc
+      - --rpc-bind-ip=0.0.0.0
+      - --rpc-bind-port=18081
+      - --confirm-external-bind
+
+  monero-wallet-rpc:
+    image: sethforprivacy/simple-monero-wallet-rpc:v0.18.3.4
+    container_name: monero-wallet-rpc
+    restart: unless-stopped
+    depends_on:
+      - monerod
+    volumes:
+      - ./wallet-data:/wallet
+    command:
+      - --wallet-file=/wallet/view-only.wallet
+      - --password-file=/wallet/wallet.password
+      - --daemon-address=monerod:18081
+      - --trusted-daemon
+      - --rpc-bind-ip=0.0.0.0
+      - --rpc-bind-port=18083
+      - --confirm-external-bind
+      - --disable-rpc-login
+
+  indexer:
+    image: node:lts-alpine
+    container_name: monero-indexer
+    restart: unless-stopped
+    depends_on:
+      - monero-wallet-rpc
+    working_dir: /app
+    volumes:
+      - ./:/app
+    command: sh -c "npm install --no-save @aquarian-metals/coin-moebius-monero @aquarian-metals/coin-moebius-server && node indexer.js"
+    environment:
+      MONERO_WALLET_RPC_URL: http://monero-wallet-rpc:18083
+      MONERO_WEBHOOK_URL: ${MONERO_WEBHOOK_URL:?MONERO_WEBHOOK_URL must be set in .env}
+      MONERO_HMAC_SECRET: ${MONERO_HMAC_SECRET:?MONERO_HMAC_SECRET must be set in .env}
+      MONERO_REQUIRED_CONFIRMATIONS: 10
+      MONERO_POLL_INTERVAL_MS: 30000

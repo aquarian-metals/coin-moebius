@@ -68,4 +68,38 @@ describe('createMemoryStore', () => {
 		expect(await a.get('pi_1')).not.toBeNull();
 		expect(await b.get('pi_1')).toBeNull();
 	});
+
+	describe('markStatusAnnounced', () => {
+		it('returns true the first time and false on every subsequent claim', async () => {
+			const store = createMemoryStore();
+			expect(await store.markStatusAnnounced?.('pi_1', 'success')).toBe(true);
+			expect(await store.markStatusAnnounced?.('pi_1', 'success')).toBe(false);
+			expect(await store.markStatusAnnounced?.('pi_1', 'success')).toBe(false);
+		});
+
+		it('treats distinct paymentIds independently', async () => {
+			const store = createMemoryStore();
+			expect(await store.markStatusAnnounced?.('pi_1', 'success')).toBe(true);
+			expect(await store.markStatusAnnounced?.('pi_2', 'success')).toBe(true);
+			expect(await store.markStatusAnnounced?.('pi_1', 'success')).toBe(false);
+		});
+
+		it('treats distinct statuses on the same paymentId independently', async () => {
+			// A payment can progress pending → success → refunded. Each
+			// transition is its own announcement; claiming `pending` must
+			// not preclude later claiming `success`.
+			const store = createMemoryStore();
+			expect(await store.markStatusAnnounced?.('pi_1', 'pending')).toBe(true);
+			expect(await store.markStatusAnnounced?.('pi_1', 'success')).toBe(true);
+			expect(await store.markStatusAnnounced?.('pi_1', 'refunded')).toBe(true);
+			expect(await store.markStatusAnnounced?.('pi_1', 'pending')).toBe(false);
+		});
+
+		it('isolates announcement state across distinct stores', async () => {
+			const a = createMemoryStore();
+			const b = createMemoryStore();
+			expect(await a.markStatusAnnounced?.('pi_1', 'success')).toBe(true);
+			expect(await b.markStatusAnnounced?.('pi_1', 'success')).toBe(true);
+		});
+	});
 });

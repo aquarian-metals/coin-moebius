@@ -2,7 +2,7 @@
 
 **The headless, zero-UI payment router for static sites.**
 
-Turn Stripe, Monero, gold escrow, or literally anything else into a single, boring `onSuccess` callback.
+Turn Stripe, NOWPayments, gold escrow, or literally anything else into a single, boring `onSuccess` callback.
 
 Static sites (JAMstack) are fast and cheap. But the second you want to accept money, you're forced to either rent a heavy, locked-in storefront (Gumroad, Payhip) or hand-roll a spaghetti monster of different webhooks for every gateway.
 
@@ -13,7 +13,7 @@ Static sites (JAMstack) are fast and cheap. But the second you want to accept mo
 ## What makes it magic?
 
 - **Zero Opinion UI:** We don't care what your buy button looks like. Build your own frontend.
-- **One Universal Callback:** Whether they paid with a Visa via Stripe or Monero, your fulfillment code runs exactly the same way.
+- **One Universal Callback:** Whether they paid with cards via Stripe or crypto via NOWPayments, your fulfillment code runs exactly the same way.
 - **Tiny Core:** We stripped the heavy stuff out. Only install the providers you actually use.
 - **Safe by Default:** A strict boundary between the browser (`core`) and your serverless webhooks (`server`).
 
@@ -29,7 +29,7 @@ Install **core** (same API whether you use the short name or the explicit packag
 npm install @aquarian-metals/coin-moebius
 ```
 
-That only installs the router core—**no** Stripe, Cryptomus, or server webhook code.
+That only installs the router core—**no** Stripe, Cryptomus, NOWPayments, or server webhook code.
 
 In your own `package.json`, use a semver range (for example `^0.1.0-beta.1` while this line is in beta) instead of `*`, so installs stay predictable.
 
@@ -67,6 +67,7 @@ Initialize the manager in your Vite/Next/Astro app. Feed it your providers, and 
 
 ```typescript
 import createCryptomusProvider from '@aquarian-metals/coin-moebius-cryptomus';
+import { createNowPaymentsProvider } from '@aquarian-metals/coin-moebius-nowpayments';
 import { createPaymentManager } from '@aquarian-metals/coin-moebius';
 import createStripeProvider from '@aquarian-metals/coin-moebius-stripe';
 
@@ -77,6 +78,13 @@ const payments = createPaymentManager({
     // can never live in the browser. The provider posts to a serverless function
     // you control (default: /.netlify/functions/create-cryptomus-payment) — see §2.
     createCryptomusProvider(),
+    // NOWPayments — same shape: the browser calls a serverless endpoint of
+    // yours, which forwards to NOWPayments with your API key. `payCurrency`
+    // is optional; omit it to let the buyer pick the coin on NOWPayments'
+    // hosted page.
+    createNowPaymentsProvider({
+      checkoutEndpoint: '/.netlify/functions/create-nowpayments-payment',
+    }),
   ],
 });
 
@@ -110,6 +118,7 @@ You need two tiny serverless functions: one **webhook** that any provider can PO
 import { createVerifierRegistry } from '@aquarian-metals/coin-moebius-server';
 import { createStripeVerifier } from '@aquarian-metals/coin-moebius-stripe/server';
 import { createCryptomusVerifier } from '@aquarian-metals/coin-moebius-cryptomus/server';
+import { createNowPaymentsVerifier } from '@aquarian-metals/coin-moebius-nowpayments/server';
 
 // One registry per consumer, registered once at module load.
 const verifiers = createVerifierRegistry();
@@ -121,6 +130,7 @@ verifiers.register(
     paymentApiKey: process.env.CRYPTOMUS_PAYMENT_API_KEY,
   }),
 );
+verifiers.register('nowpayments', createNowPaymentsVerifier({ ipnSecret: process.env.NOWPAYMENTS_IPN_SECRET }));
 
 export default async function handler(req) {
   // Boom. Verified, standardized payload.

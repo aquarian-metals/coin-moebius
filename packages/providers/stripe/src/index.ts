@@ -3,24 +3,39 @@ import type {
 	InitiateOptions,
 	PaymentResult,
 } from '@aquarian-metals/coin-moebius-core';
-import { loadStripe } from '@stripe/stripe-js';
 
 export interface StripeProviderConfig {
-	publishableKey: string;
 	/**
 	 * Endpoint on your own backend that creates a Stripe Checkout session and
-	 * returns `{ sessionId }`. Defaults to `/api/checkout/stripe` — a
+	 * returns `{ url }`. Defaults to `/api/checkout/stripe` — a
 	 * vendor-neutral REST-style path that works out-of-the-box on Cloudflare
 	 * Workers, Vercel, Express, or any host where you serve that route.
 	 * Override for hosts with different conventions (e.g.,
 	 * `/.netlify/functions/create-stripe-session` for Netlify).
 	 *
-	 * Your secret key must stay server-side — never ship it to the browser.
+	 * Your Stripe secret key must stay on the server endpoint behind this URL —
+	 * never ship it to the browser.
 	 */
 	sessionEndpoint?: string;
 }
 
-export default function createStripeProvider(config: StripeProviderConfig): PaymentProvider {
+/**
+ * Stripe browser-side provider.
+ *
+ * The provider POSTs the buyer's selection to your `sessionEndpoint`, which
+ * is expected to create a Stripe Checkout Session and return `{ url }`.
+ * The provider then redirects the buyer's browser to that URL via
+ * `window.location.assign(url)` — Stripe's documented happy path.
+ *
+ * Notes:
+ *   - No `@stripe/stripe-js` library load on the client. Redirecting to the
+ *     Session URL is the documented current pattern; the older
+ *     `stripe.redirectToCheckout({ sessionId })` flow required loading
+ *     stripe.js purely to call a thin wrapper around the same redirect.
+ *   - No publishable key needed on the client. Your server holds the secret;
+ *     the buyer's browser only ever sees the public hosted-checkout URL.
+ */
+export default function createStripeProvider(config: StripeProviderConfig = {}): PaymentProvider {
 	const sessionEndpoint = config.sessionEndpoint ?? '/api/checkout/stripe';
 
 	const provider: PaymentProvider = {
@@ -37,9 +52,6 @@ export default function createStripeProvider(config: StripeProviderConfig): Paym
 			},
 		) {
 			try {
-				const stripe = await loadStripe(config.publishableKey);
-				if (!stripe) throw new Error('Failed to load Stripe.js');
-
 				const response = await fetch(sessionEndpoint, {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
@@ -55,30 +67,27 @@ export default function createStripeProvider(config: StripeProviderConfig): Paym
 					throw new Error(`coin-moebius/stripe: session endpoint returned ${response.status}`);
 				}
 
-				const { sessionId } = (await response.json()) as { sessionId: string };
+				const { url } = (await response.json()) as { url?: string };
 
-				if (!sessionId) {
-					throw new Error('coin-moebius/stripe: session endpoint did not return sessionId');
+				if (!url) {
+					throw new Error('coin-moebius/stripe: session endpoint did not return url');
 				}
 
-				const { error } = await stripe.redirectToCheckout({ sessionId });
-
-				// Stripe.js types `error` as a plain object (`{ message?: string, type?: string }`),
-				// not a true Error instance. Wrap it before throwing so downstream handlers can
-				// rely on `instanceof Error`.
-				if (error) {
-					throw new Error(error.message ?? 'coin-moebius/stripe: redirectToCheckout failed');
-				}
-
+				// Fire the pending callback before navigating away so callers
+				// can record the in-flight checkout in their analytics or UI
+				// state. The buyer's browser will be on Stripe's hosted page
+				// the moment the line below executes.
 				callbacks.onPending?.({
 					status: 'pending',
-					paymentId: sessionId,
+					paymentId: url,
 					provider: provider.id,
 					amount: options.amount,
 					currency: options.currency,
 					metadata: options.metadata ?? {},
 					timestamp: Date.now(),
 				});
+
+				window.location.assign(url);
 			} catch (err) {
 				callbacks.onError(err instanceof Error ? err : new Error(String(err)));
 			}

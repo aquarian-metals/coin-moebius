@@ -1,0 +1,48 @@
+# systemd unit for the Coin Moebius Monero indexer.
+#
+# Install: copy to /etc/systemd/system/, edit the paths and env, then:
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now monero-indexer
+#   sudo journalctl -u monero-indexer -f
+#
+# Restart-on-failure handles the case where wallet RPC is temporarily
+# unreachable on indexer startup; the indexer is catch-up by design, so
+# brief crashes don't lose payments.
+
+[Unit]
+Description=Coin Moebius Monero indexer
+After=network-online.target monero-wallet-rpc.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=monero
+Group=monero
+WorkingDirectory=/opt/coin-moebius
+ExecStart=/usr/bin/node /opt/coin-moebius/indexer.js
+Restart=on-failure
+RestartSec=5
+
+# Hardening — the indexer reads wallet RPC and writes to outbound HTTPS
+# only. Lock everything else down.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log/coin-moebius
+
+# Env. Edit these.
+Environment=MONERO_WALLET_RPC_URL=http://localhost:18083
+Environment=MONERO_WEBHOOK_URL=https://your-site.example/api/payment-webhook
+Environment=MONERO_REQUIRED_CONFIRMATIONS=10
+Environment=MONERO_POLL_INTERVAL_MS=30000
+EnvironmentFile=/etc/coin-moebius/indexer.env
+
+# Stop sends SIGTERM; indexer.js handles it and clears the polling
+# interval. Give it a few seconds to drain.
+TimeoutStopSec=10
+KillMode=mixed
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target

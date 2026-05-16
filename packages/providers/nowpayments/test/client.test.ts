@@ -1,14 +1,14 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createNowPaymentsCreator } from '../src/index.js';
+import { createNowPaymentsProvider } from '../src/index.js';
 
 /**
- * Tests the client-side `createNowPaymentsCreator` — checkout-endpoint call,
+ * Tests the client-side `createNowPaymentsProvider` — checkout-endpoint call,
  * pending callback fire, navigation. The actual `invoice_url` redirect is
  * stubbed via the `navigate` injection so we can assert it was called with
  * the right URL.
  */
 
-describe('createNowPaymentsCreator', () => {
+describe('createNowPaymentsProvider', () => {
 	it('POSTs to the configured checkout endpoint and navigates to the returned url', async () => {
 		const fetchStub = vi.fn(
 			async (_url: RequestInfo | URL, _init?: RequestInit) =>
@@ -25,7 +25,7 @@ describe('createNowPaymentsCreator', () => {
 		const onPending = vi.fn();
 		const onSuccess = vi.fn();
 
-		const provider = createNowPaymentsCreator({
+		const provider = createNowPaymentsProvider({
 			checkoutEndpoint: 'http://test/api/checkout/nowpayments/proj_x',
 			fetcher: fetchStub,
 			navigate: navigateStub,
@@ -58,7 +58,7 @@ describe('createNowPaymentsCreator', () => {
 			capturedBody = JSON.parse(bodyStr) as Record<string, unknown>;
 			return new Response(JSON.stringify({ url: 'https://x.example' }), { status: 200 });
 		});
-		const provider = createNowPaymentsCreator({
+		const provider = createNowPaymentsProvider({
 			checkoutEndpoint: 'http://test/checkout',
 			payCurrency: 'xmr',
 			fetcher: fetchStub,
@@ -78,7 +78,7 @@ describe('createNowPaymentsCreator', () => {
 		const navigateStub = vi.fn();
 		const onError = vi.fn();
 
-		const provider = createNowPaymentsCreator({
+		const provider = createNowPaymentsProvider({
 			checkoutEndpoint: 'http://test/checkout',
 			fetcher: fetchStub,
 			navigate: navigateStub,
@@ -98,7 +98,7 @@ describe('createNowPaymentsCreator', () => {
 		);
 		const onError = vi.fn();
 
-		const provider = createNowPaymentsCreator({
+		const provider = createNowPaymentsProvider({
 			checkoutEndpoint: 'http://test/checkout',
 			fetcher: fetchStub,
 			navigate: () => undefined,

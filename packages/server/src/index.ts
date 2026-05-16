@@ -5,8 +5,14 @@ import type { PaymentStore } from './types.js';
  * A provider-specific webhook verifier. Each payment provider's `/server`
  * package exposes a function matching this shape (see Stripe's
  * `createStripeVerifier`, Cryptomus's `createCryptomusVerifier`, etc.).
+ *
+ * Returns `null` when the verifier successfully verified the signature but
+ * the event isn't a payment event the consumer should act on (e.g., Stripe's
+ * `product.created` for a subscribed-to-everything webhook). Callers should
+ * treat `null` as "ignore this event, return 200 to the provider" rather than
+ * a failure.
  */
-export type Verifier = (rawBody: unknown, headers?: unknown) => Promise<PaymentResult>;
+export type Verifier = (rawBody: unknown, headers?: unknown) => Promise<PaymentResult | null>;
 
 /**
  * A registry of payment-provider verifiers, instantiated per-consumer so no
@@ -28,10 +34,12 @@ export interface VerifierRegistry {
 	/**
 	 * Resolve a provider from the request (header `x-provider` or body field
 	 * `provider`), then dispatch the raw body + headers to that provider's
-	 * verifier. Returns a `PaymentResult` on success; rejects when no provider
-	 * id is resolvable or no verifier is registered for it.
+	 * verifier. Returns a `PaymentResult` for a real payment event, `null`
+	 * when the signed event isn't one the consumer should act on (see
+	 * {@link Verifier}). Rejects when no provider id is resolvable or no
+	 * verifier is registered for it.
 	 */
-	verify(rawBody: unknown, headers?: unknown): Promise<PaymentResult>;
+	verify(rawBody: unknown, headers?: unknown): Promise<PaymentResult | null>;
 }
 
 /**

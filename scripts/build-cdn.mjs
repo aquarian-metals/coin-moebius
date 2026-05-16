@@ -2,34 +2,46 @@
 /**
  * Build the `sdk.global.js` bundle for `<script>`-tag CDN consumers.
  *
- * Outputs (under `coin-moebius/dist-cdn/`):
+ * Outputs to TWO locations, identical content:
  *
- *   sdk.global.js             — full bundle: registers <coin-moebius-buy>
- *                               and exposes CoinMoebius.* on window for
- *                               consumers that want the JS API too.
- *   sdk.global.js.map         — source map
- *   sdk.element.js            — element-only build (smaller; for consumers
- *                               who only want the drop-in HTML widget).
+ *   1. coin-moebius/dist-cdn/        — picked up by the release workflow and
+ *                                      uploaded to cdn.coinmoebius.com/v1/.
+ *   2. packages/element/dist/        — shipped inside the npm package so the
+ *                                      published bundle is also reachable
+ *                                      via jsDelivr / unpkg:
+ *                                        https://cdn.jsdelivr.net/npm/
+ *                                          @aquarian-metals/coin-moebius-element@1/
+ *                                          dist/sdk.global.js
+ *                                      Gives merchants a free fallback CDN
+ *                                      if cdn.coinmoebius.com is ever down.
+ *
+ * Files written to each location:
+ *   sdk.global.js     — full bundle: registers <coin-moebius-buy> and
+ *                       exposes CoinMoebius.* on window.
+ *   sdk.global.js.map — source map
+ *   sdk.element.js    — element-only build (smaller).
  *   sdk.element.js.map
  *
  * The bundles are IIFE (Immediately Invoked Function Expression) format —
  * no module loader required. Drop into a `<script src="…">` and it works.
  *
- * Versioning happens at the CDN layer: the `sdk-cdn/` Pages project hosts
- * `cdn.coinmoebius.com/v<MAJOR.MINOR>/sdk.global.js` (immutable) and
- * `cdn.coinmoebius.com/latest/sdk.global.js` (short-cached). This script
- * produces the raw bundle; the release workflow uploads it to both paths.
+ * Versioning happens at the CDN layer: cdn.coinmoebius.com/v1/sdk.global.js
+ * (immutable for the v1 major) and cdn.coinmoebius.com/latest/sdk.global.js
+ * (short-cached). jsDelivr automatically serves the same files at semver
+ * paths once the npm package is published.
  */
 
 import { execSync } from 'node:child_process';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import esbuild from 'esbuild';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const outDir = resolve(root, 'dist-cdn');
+const elementDistDir = resolve(root, 'packages/element/dist');
 mkdirSync(outDir, { recursive: true });
+mkdirSync(elementDistDir, { recursive: true });
 
 const elementPkgPath = resolve(root, 'packages/element/package.json');
 const elementPkg = JSON.parse(readFileSync(elementPkgPath, 'utf8'));
@@ -86,7 +98,16 @@ writeFileSync(
 	),
 );
 
-console.log(`✓ CDN bundle v${version} written to ${outDir}`);
+// Mirror the bundles into the element package's dist/ so they ship with
+// `npm publish`. This is what makes the jsDelivr / unpkg backup CDN work —
+// once the npm package is published, the same bundles become reachable at
+// cdn.jsdelivr.net/npm/@aquarian-metals/coin-moebius-element@1/dist/sdk.global.js
+// without any extra publishing step.
+for (const f of ['sdk.global.js', 'sdk.global.js.map', 'sdk.element.js', 'sdk.element.js.map']) {
+	copyFileSync(resolve(outDir, f), resolve(elementDistDir, f));
+}
+
+console.log(`✓ CDN bundle v${version} written to ${outDir} and mirrored into ${elementDistDir}`);
 
 function safeGit(args) {
 	try {
