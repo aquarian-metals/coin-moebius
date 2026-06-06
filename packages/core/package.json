@@ -1,6 +1,6 @@
 {
 	"name": "@aquarian-metals/coin-moebius-core",
-	"version": "4.0.0",
+	"version": "4.0.1",
 	"description": "Headless payment router core for Coin Moebius — types, manager, and status polling. Browser-safe.",
 	"keywords": [
 		"payments",

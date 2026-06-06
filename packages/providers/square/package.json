@@ -1,6 +1,6 @@
 {
 	"name": "@aquarian-metals/coin-moebius-square",
-	"version": "4.0.0",
+	"version": "4.0.1",
 	"description": "Square (Block) provider for Coin Moebius — Payment Link redirect flow, plus a server-only HMAC-SHA256 webhook verifier.",
 	"keywords": [
 		"payments",
@@ -49,7 +49,7 @@
 		"node": ">=18"
 	},
 	"dependencies": {
-		"@aquarian-metals/coin-moebius-core": "^4.0.0"
+		"@aquarian-metals/coin-moebius-core": "^4.0.1"
 	},
 	"devDependencies": {
 		"typescript": "~5.8.0"

@@ -1,6 +1,6 @@
 {
 	"name": "@aquarian-metals/coin-moebius-cryptomus",
-	"version": "4.0.0",
+	"version": "4.0.1",
 	"description": "Cryptomus payment provider for Coin Moebius. Routes any Cryptomus-supported coin (Monero, btc, USDT, and many more) through the same SDK callback shape.",
 	"keywords": [
 		"payments",
@@ -49,7 +49,7 @@
 		"node": ">=18"
 	},
 	"dependencies": {
-		"@aquarian-metals/coin-moebius-core": "^4.0.0"
+		"@aquarian-metals/coin-moebius-core": "^4.0.1"
 	},
 	"devDependencies": {
 		"typescript": "~5.8.0"
