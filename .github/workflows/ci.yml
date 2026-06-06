@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  verify:
+    name: lint + typecheck + format (Node 22)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Build first so inter-workspace imports (e.g., providers/cryptomus
+      # importing types from coin-moebius-core) can resolve through each
+      # package's `main`/`types` fields. Without dist/ in place, ESLint's
+      # type-checked rules fall back to `any` and report unsafe-* errors.
+      - run: npm run build
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm run typecheck
+
+  test:
+    name: test + coverage (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      # Build before test so the coin-moebius re-export smoke test (which
+      # imports from `@aquarian-metals/coin-moebius-core` to verify the
+      # re-export's identity) can resolve the package's entry point.
+      - run: npm run build
+      - run: npm test
+      - name: Coverage
+        run: npm run test:coverage
+
+  build-and-package:
+    name: build + attw + size (Node 22)
+    runs-on: ubuntu-latest
+    needs: [verify, test]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Are The Types Wrong?
+        run: npm run attw
+      - name: Bundle size budgets
+        run: npm run size

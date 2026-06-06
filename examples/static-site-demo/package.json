@@ -1,0 +1,21 @@
+{
+	"name": "coin-moebius-demo",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"dev": "vite",
+		"build": "vite build"
+	},
+	"dependencies": {
+		"@aquarian-metals/coin-moebius": "3.0.0",
+		"@aquarian-metals/coin-moebius-cryptomus": "3.0.0",
+		"@aquarian-metals/coin-moebius-monero": "3.0.0",
+		"@aquarian-metals/coin-moebius-server": "3.0.0",
+		"@aquarian-metals/coin-moebius-stripe": "3.0.0",
+		"stripe": "^22.0.0"
+	},
+	"devDependencies": {
+		"typescript": "~5.8.0",
+		"vite": "^6.0.0"
+	}
+}

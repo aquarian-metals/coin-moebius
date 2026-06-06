@@ -1,0 +1,11 @@
+node_modules/
+dist/
+dist-cdn/
+coverage/
+docs/api/
+*.tsbuildinfo
+.eslintcache
+*.log
+.DS_Store
+.env
+.env.*

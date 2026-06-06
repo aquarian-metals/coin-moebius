@@ -1,0 +1,61 @@
+{
+	"name": "@aquarian-metals/coin-moebius-dodopayments",
+	"version": "3.0.0",
+	"description": "Dodo Payments provider for Coin Moebius — Merchant-of-Record hosted checkout for one-time and subscription payments, plus a server-only Standard Webhooks verifier under the ./server subpath.",
+	"keywords": [
+		"payments",
+		"dodopayments",
+		"merchant-of-record",
+		"checkout",
+		"subscriptions",
+		"webhook",
+		"standard-webhooks",
+		"coin-moebius"
+	],
+	"author": "aquarian-metals",
+	"license": "MIT",
+	"homepage": "https://github.com/aquarian-metals/coin-moebius#readme",
+	"bugs": {
+		"url": "https://github.com/aquarian-metals/coin-moebius/issues"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/aquarian-metals/coin-moebius.git",
+		"directory": "packages/providers/dodopayments"
+	},
+	"type": "module",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"sideEffects": false,
+	"files": [
+		"dist"
+	],
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		},
+		"./server": {
+			"types": "./dist/server.d.ts",
+			"import": "./dist/server.js"
+		},
+		"./package.json": "./package.json"
+	},
+	"scripts": {
+		"clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+		"build": "tsc",
+		"prepublishOnly": "npm run clean && npm run build"
+	},
+	"engines": {
+		"node": ">=18"
+	},
+	"dependencies": {
+		"@aquarian-metals/coin-moebius-core": "^3.0.0"
+	},
+	"devDependencies": {
+		"typescript": "~5.8.0"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
+}

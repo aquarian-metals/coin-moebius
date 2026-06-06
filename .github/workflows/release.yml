@@ -1,0 +1,79 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+# id-token: write lets GitHub mint the OIDC token that npm's Trusted
+# Publishing verifies. No NPM_TOKEN secret needed.
+# contents: write lets the workflow create a GitHub Release from the tag.
+permissions:
+  contents: write
+  id-token: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  publish:
+    name: publish to npm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Upgrade npm for OIDC trusted publishing (requires >= 11.5.1)
+        run: npm install -g npm@latest
+
+      - run: npm ci
+      - run: npm run verify
+
+      # Determine the dist-tag from the root package version-style. Pre-release
+      # versions (`*-beta.x`, `*-rc.x`, etc.) ship under the `beta` tag; stable
+      # versions ship under `latest`. Every workspace ships under the same tag.
+      - name: Determine dist-tag
+        id: tag
+        run: |
+          VERSION=$(node -p "require('./packages/core/package.json').version")
+          TAG=latest
+          case "$VERSION" in *-*) TAG=beta ;; esac
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Publishing under dist-tag: $TAG"
+
+      # Publish every workspace marked public. `--workspaces` iterates them all;
+      # workspaces with `"private": true` (like examples/) are skipped automatically.
+      # No registry-url in setup-node and no NODE_AUTH_TOKEN: OIDC handles auth.
+      # npm 11.x crashes on --workspaces when a private package is present
+      # (Cannot read properties of null, reading 'prerelease'). Publish each
+      # public workspace individually instead.
+      - name: Publish workspaces
+        run: |
+          npm query '.workspace:not([private])' \
+            | node -e "process.stdin.setEncoding('utf8');let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{for(const p of JSON.parse(d))console.log(p.name)})" \
+            | while read pkg; do
+                echo "--- Publishing $pkg ---"
+                npm publish -w "$pkg" --tag ${{ steps.tag.outputs.tag }} --provenance
+              done
+
+      # After npm publish succeeds, point the `latest` dist-tag at this
+      # version. npm won't auto-promote a lower semver, so an explicit
+      # dist-tag add is needed when the version number decreases (e.g.,
+      # after resetting from 2.0.0 back to 0.7.0).
+      - name: Force latest dist-tag
+        if: steps.tag.outputs.tag == 'latest'
+        run: |
+          VERSION=$(node -p "require('./packages/core/package.json').version")
+          npm query '.workspace:not([private])' \
+            | node -e "process.stdin.setEncoding('utf8');let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{for(const p of JSON.parse(d))console.log(p.name)})" \
+            | while read pkg; do
+                echo "--- Tagging $pkg@$VERSION as latest ---"
+                npm dist-tag add "$pkg@$VERSION" latest
+              done
+
+      - name: Create GitHub Release
+        run: gh release create "${{ github.ref_name }}" --generate-notes --latest
+        env:
+          GH_TOKEN: ${{ github.token }}

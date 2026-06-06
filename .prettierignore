@@ -1,0 +1,12 @@
+node_modules
+**/dist/
+**/coverage/
+docs/api/
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+*.min.js
+*.min.css
+# Generated, minified buy-button bundles (built by packages/buy/build.mjs).
+packages/buy/sdk.*.js
+packages/buy/sdk.*.js.map
