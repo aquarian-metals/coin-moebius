@@ -168,10 +168,9 @@ describe('createAuthorizenetProvider', () => {
 				{ onSuccess: () => undefined, onError: () => undefined },
 			);
 			expect(submitSpy).toHaveBeenCalledOnce();
-			// Vitest types the spy's `mock.instances` based on the mocked
-			// function's return type (here, void). Cast through `unknown` to
-			// recover the actual `this`-receiver — the form element.
-			const form = submitSpy.mock.instances[0] as unknown as HTMLFormElement;
+			// Vitest types `mock.instances` elements as `unknown`; assert the
+			// actual `this`-receiver (the form element) to read its properties.
+			const form = submitSpy.mock.instances[0] as HTMLFormElement;
 			expect(form.action).toBe('https://accept.authorize.net/payment/payment');
 			expect(form.method.toLowerCase()).toBe('post');
 			const tokenInput = form.querySelector<HTMLInputElement>('input[name="token"]');

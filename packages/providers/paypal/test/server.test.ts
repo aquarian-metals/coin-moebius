@@ -120,11 +120,11 @@ describe('crc32 helper', () => {
 
 describe('createPaypalVerifier (REST endpoint)', () => {
 	function setupFetchStub(opts: { verificationStatus: 'SUCCESS' | 'FAILURE' }): {
-		fetcher: ReturnType<typeof vi.fn>;
+		fetcher: typeof fetch;
 		calls: Array<{ url: string; init?: RequestInit }>;
 	} {
 		const calls: Array<{ url: string; init?: RequestInit }> = [];
-		const fetcher = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+		const fetcher: typeof fetch = async (url, init) => {
 			const urlStr = typeof url === 'string' ? url : url instanceof URL ? url.href : '';
 			calls.push({ url: urlStr, init });
 			if (urlStr.endsWith('/v1/oauth2/token')) {
@@ -138,7 +138,7 @@ describe('createPaypalVerifier (REST endpoint)', () => {
 				});
 			}
 			throw new Error(`unexpected fetch to ${urlStr}`);
-		});
+		};
 		return { fetcher, calls };
 	}
 

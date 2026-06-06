@@ -85,6 +85,30 @@ describe('createPaymentManager', () => {
 		expect(cb).not.toHaveBeenCalled();
 	});
 
+	it('unsubscribes a pending listener via its returned function', () => {
+		const provider = makeProvider('stripe', 'pending');
+		const payments = createPaymentManager({ providers: [provider] });
+
+		const cb = vi.fn();
+		const unsubscribe = payments.onPending(cb);
+		unsubscribe();
+
+		payments.initiate({ productId: 'p', amount: 1, currency: 'USD' });
+		expect(cb).not.toHaveBeenCalled();
+	});
+
+	it('unsubscribes an error listener via its returned function', () => {
+		const provider = makeProvider('stripe', 'error');
+		const payments = createPaymentManager({ providers: [provider] });
+
+		const cb = vi.fn();
+		const unsubscribe = payments.onError(cb);
+		unsubscribe();
+
+		payments.initiate({ productId: 'p', amount: 1, currency: 'USD' });
+		expect(cb).not.toHaveBeenCalled();
+	});
+
 	it('routes pending callbacks separately from success callbacks', () => {
 		const provider = makeProvider('stripe', 'pending');
 		const payments = createPaymentManager({ providers: [provider] });

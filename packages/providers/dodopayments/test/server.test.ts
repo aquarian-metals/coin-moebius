@@ -1,8 +1,9 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { asPayment, asSubscription } from '@aquarian-metals/coin-moebius-core';
 import {
 	createDodoPaymentsVerifier,
 	computeDodoSignature,
+	getDodoPortalUrl,
 	type DodoWebhookPayload,
 } from '../src/server.js';
 
@@ -306,5 +307,182 @@ describe('createDodoPaymentsVerifier — verification failures', () => {
 		const result = asPayment(await verify(bytes, headers));
 		expect(result!.status).toBe('success');
 		expect(result!.paymentId).toBe('pay_abc123');
+	});
+
+	it('accepts an ArrayBuffer body equivalently to a string body', async () => {
+		const verify = createDodoPaymentsVerifier({ webhookSecret: WEBHOOK_SECRET });
+		const { body, headers } = await signedDelivery(paymentPayload());
+		const buffer = new TextEncoder().encode(body).buffer;
+		const result = asPayment(await verify(buffer, headers));
+		expect(result!.status).toBe('success');
+	});
+
+	it('throws when the verifier was built without a secret', async () => {
+		const verify = createDodoPaymentsVerifier({ webhookSecret: '' });
+		await expect(verify('{}', {})).rejects.toThrow(/webhookSecret missing/);
+	});
+
+	it('treats absent headers as empty and reports the missing webhook headers', async () => {
+		const verify = createDodoPaymentsVerifier({ webhookSecret: WEBHOOK_SECRET });
+		const { body } = await signedDelivery(paymentPayload());
+		await expect(verify(body)).rejects.toThrow(/missing webhook-id/);
+	});
+
+	it('rejects a non-numeric webhook-timestamp', async () => {
+		const verify = createDodoPaymentsVerifier({ webhookSecret: WEBHOOK_SECRET });
+		const { body, headers } = await signedDelivery(paymentPayload(), { timestamp: 'not-a-number' });
+		await expect(verify(body, headers)).rejects.toThrow(/not a number/);
+	});
+
+	it('skips signature tokens without a version comma and matches a later valid token', async () => {
+		const verify = createDodoPaymentsVerifier({ webhookSecret: WEBHOOK_SECRET });
+		const { body, headers } = await signedDelivery(paymentPayload());
+		const event = await verify(body, {
+			...headers,
+			'webhook-signature': `garbagetoken ${headers['webhook-signature']}`,
+		});
+		expect(event).not.toBeNull();
+	});
+});
+
+describe('createDodoPaymentsVerifier — field fallbacks', () => {
+	const verify = createDodoPaymentsVerifier({ webhookSecret: WEBHOOK_SECRET });
+
+	it('defaults missing currency to USD and missing amount/metadata to safe values', async () => {
+		const { body, headers } = await signedDelivery(
+			paymentPayload({ currency: undefined, total_amount: undefined, metadata: undefined }),
+		);
+		const event = asPayment(await verify(body, headers));
+		expect(event?.currency).toBe('USD');
+		expect(event?.amount).toBe(0);
+		expect(event?.metadata.orderRef).toBeUndefined();
+	});
+
+	it('falls back from payment_id to subscription_id to empty string', async () => {
+		const { body, headers } = await signedDelivery(
+			paymentPayload({ payment_id: undefined, subscription_id: undefined }),
+		);
+		const event = asPayment(await verify(body, headers));
+		expect(event?.paymentId).toBe('');
+	});
+
+	it('uses the refund total_amount fallback when the refund amount is absent', async () => {
+		const payload = paymentPayload({
+			payload_type: 'Refund',
+			amount: undefined,
+			total_amount: 500,
+		});
+		payload.type = 'refund.succeeded';
+		const { body, headers } = await signedDelivery(payload);
+		const event = asPayment(await verify(body, headers));
+		expect(event?.status).toBe('refunded');
+		expect(event?.amount).toBe(5);
+	});
+
+	it('falls back customerRef to email, productId to null, and subscriptionId to empty', async () => {
+		const { body, headers } = await signedDelivery(
+			subscriptionPayload('subscription.renewed', {
+				subscription_id: undefined,
+				product_id: undefined,
+				customer: { email: 'only-email@example.com' },
+			}),
+		);
+		const event = asSubscription(await verify(body, headers));
+		expect(event?.subscriptionId).toBe('');
+		expect(event?.productId).toBeNull();
+		expect(event?.customerRef).toBe('only-email@example.com');
+	});
+
+	it('maps the paused subscription status', async () => {
+		const { body, headers } = await signedDelivery(
+			subscriptionPayload('subscription.updated', { status: 'paused' }),
+		);
+		expect(asSubscription(await verify(body, headers))?.status).toBe('paused');
+	});
+
+	it('maps an absent/unknown status to unknown with safe defaults', async () => {
+		const { body, headers } = await signedDelivery(
+			subscriptionPayload('subscription.updated', {
+				status: undefined,
+				next_billing_date: undefined,
+				recurring_pre_tax_amount: undefined,
+				currency: undefined,
+			}),
+		);
+		const event = asSubscription(await verify(body, headers));
+		expect(event?.status).toBe('unknown');
+		expect(event?.currentPeriodEnd).toBeNull();
+		expect(event?.amount).toBe(0);
+		expect(event?.currency).toBe('USD');
+	});
+
+	it('returns null currentPeriodEnd for an unparseable next_billing_date', async () => {
+		const { body, headers } = await signedDelivery(
+			subscriptionPayload('subscription.renewed', { next_billing_date: 'not-a-date' }),
+		);
+		expect(asSubscription(await verify(body, headers))?.currentPeriodEnd).toBeNull();
+	});
+});
+
+describe('getDodoPortalUrl', () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it('posts to the portal session endpoint and returns the link, including return_url', async () => {
+		const fetchSpy = vi
+			.spyOn(globalThis, 'fetch')
+			.mockResolvedValue(
+				new Response(JSON.stringify({ link: 'https://portal.dodo/abc' }), { status: 200 }),
+			);
+		const url = await getDodoPortalUrl({
+			apiKey: 'key_123',
+			apiBase: 'https://test.dodopayments.com/',
+			customerId: 'cus_9',
+			returnUrl: 'https://shop.example/account',
+		});
+		expect(url).toBe('https://portal.dodo/abc');
+		const called = new URL((fetchSpy.mock.calls[0][0] as URL).toString());
+		expect(called.pathname).toBe('/customers/cus_9/customer-portal/session');
+		expect(called.searchParams.get('return_url')).toBe('https://shop.example/account');
+	});
+
+	it('omits return_url when not provided', async () => {
+		const fetchSpy = vi
+			.spyOn(globalThis, 'fetch')
+			.mockResolvedValue(
+				new Response(JSON.stringify({ link: 'https://portal.dodo/xyz' }), { status: 200 }),
+			);
+		await getDodoPortalUrl({
+			apiKey: 'k',
+			apiBase: 'https://test.dodopayments.com',
+			customerId: 'cus_1',
+		});
+		const called = new URL((fetchSpy.mock.calls[0][0] as URL).toString());
+		expect(called.searchParams.has('return_url')).toBe(false);
+	});
+
+	it('throws when the portal session request fails', async () => {
+		vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('nope', { status: 500 }));
+		await expect(
+			getDodoPortalUrl({
+				apiKey: 'k',
+				apiBase: 'https://test.dodopayments.com',
+				customerId: 'cus_1',
+			}),
+		).rejects.toThrow(/customer-portal session failed \(500\)/);
+	});
+
+	it('throws when the response is missing the link field', async () => {
+		vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+			new Response(JSON.stringify({}), { status: 200 }),
+		);
+		await expect(
+			getDodoPortalUrl({
+				apiKey: 'k',
+				apiBase: 'https://test.dodopayments.com',
+				customerId: 'cus_1',
+			}),
+		).rejects.toThrow(/missing `link`/);
 	});
 });

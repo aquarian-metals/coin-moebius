@@ -71,17 +71,25 @@ if (!skipGit) {
 
 // 3. npm `latest` dist-tag matches, per package. Registry reads can lag a few
 // seconds after publish, so retry a couple of times before declaring a miss.
+const EXPECTED = canonical;
 const npmVersion = (name) => {
-	for (let attempt = 0; attempt < 3; attempt++) {
+	let last = null;
+	// The `latest` dist-tag can take 20s+ to propagate to reads after a publish,
+	// so poll until it matches the expected version (or we run out of patience)
+	// rather than declaring drift on the first stale read.
+	for (let attempt = 0; attempt < 10; attempt++) {
 		try {
 			const v = execSync(`npm view ${name} version`, { encoding: 'utf8' }).trim();
-			if (v) return v;
+			if (v) {
+				last = v;
+				if (v === EXPECTED) return v;
+			}
 		} catch {
 			/* not published yet, or transient registry error */
 		}
-		if (attempt < 2) execSync('sleep 2');
+		if (attempt < 9) execSync('sleep 3');
 	}
-	return null;
+	return last;
 };
 
 const rows = [];
