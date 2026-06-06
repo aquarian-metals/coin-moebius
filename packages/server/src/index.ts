@@ -33,14 +33,22 @@ export interface VerifierRegistry {
 	register(providerId: string, verifier: Verifier): void;
 
 	/**
-	 * Resolve a provider from the request (header `x-provider` or body field
-	 * `provider`), then dispatch the raw body + headers to that provider's
-	 * verifier. Returns a `WebhookEvent` for a recognized event (payment or
-	 * subscription), `null` when the signed event isn't one the consumer
-	 * should act on (see {@link Verifier}). Rejects when no provider id is
-	 * resolvable or no verifier is registered for it.
+	 * Dispatch a raw webhook body + headers to a provider's verifier.
+	 *
+	 * Provider resolution (C3 — provider-confusion safe):
+	 *   1. If `providerId` is passed, it's used as-is. Pass it from a TRUSTED
+	 *      source — e.g. the webhook URL path you control (`/webhook/:provider`)
+	 *      — NOT from request data.
+	 *   2. Otherwise, if exactly one verifier is registered, that one is used
+	 *      (unambiguous; an attacker can't steer the choice).
+	 *   3. Otherwise (multiple verifiers, no explicit id) it REJECTS rather than
+	 *      trusting the attacker-controllable `x-provider` header / `provider`
+	 *      body field to pick among them.
+	 *
+	 * Returns a `WebhookEvent` for a recognized event, `null` when the signed
+	 * event isn't one the consumer should act on (see {@link Verifier}).
 	 */
-	verify(rawBody: unknown, headers?: unknown): Promise<WebhookEvent | null>;
+	verify(rawBody: unknown, headers?: unknown, providerId?: string): Promise<WebhookEvent | null>;
 }
 
 /**
@@ -64,15 +72,41 @@ export function createVerifierRegistry(): VerifierRegistry {
 		register(providerId, verifier) {
 			registry.set(providerId, verifier);
 		},
-		verify(rawBody, headers) {
-			const headerRecord = headers as Record<string, string | undefined> | undefined;
-			const bodyRecord = rawBody as Record<string, string | undefined> | undefined;
-			const providerId = headerRecord?.['x-provider'] ?? bodyRecord?.provider;
-			const verifier = registry.get(providerId ?? '');
+		verify(rawBody, headers, providerId) {
+			let resolved = providerId;
 
+			if (!resolved) {
+				const headerRecord = headers as Record<string, string | undefined> | undefined;
+				const bodyRecord = rawBody as Record<string, string | undefined> | undefined;
+				const sniffed = headerRecord?.['x-provider'] ?? bodyRecord?.provider;
+
+				if (registry.size === 1) {
+					// Unambiguous: only one verifier can possibly handle this.
+					resolved = registry.keys().next().value;
+				} else if (registry.size >= 2) {
+					// C3: with multiple verifiers, do NOT pick using the
+					// attacker-controllable `x-provider` header / `provider` body
+					// field — that's provider confusion (route a forged payload to a
+					// weaker verifier). Make the caller pass the id from a trusted
+					// channel (e.g. the webhook URL path) instead.
+					return Promise.reject(
+						new Error(
+							sniffed
+								? `coin-moebius: refusing to resolve the provider from request data ("${sniffed}") when ${registry.size} verifiers are registered. Pass the provider id explicitly — verify(body, headers, providerId) — from a trusted source such as the webhook URL path.`
+								: 'coin-moebius: no provider id given and multiple verifiers are registered. Pass it explicitly: verify(body, headers, providerId).',
+						),
+					);
+				} else {
+					// Empty registry: nothing to confuse. Carry the requested id
+					// through only so the "no verifier registered" error can name it.
+					resolved = sniffed;
+				}
+			}
+
+			const verifier = registry.get(resolved ?? '');
 			if (!verifier) {
 				return Promise.reject(
-					new Error(`coin-moebius: no verifier registered for provider "${providerId}"`),
+					new Error(`coin-moebius: no verifier registered for provider "${resolved}"`),
 				);
 			}
 

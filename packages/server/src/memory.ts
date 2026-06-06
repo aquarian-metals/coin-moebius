@@ -1,4 +1,4 @@
-import type { PaymentStatus } from '@aquarian-metals/coin-moebius-core';
+import { isStatusRegression, type PaymentStatus } from '@aquarian-metals/coin-moebius-core';
 import type { PaymentRecord, PaymentStore } from './types.js';
 
 /**
@@ -34,6 +34,12 @@ export function createMemoryStore(): PaymentStore {
 	return {
 		upsert(record) {
 			const existing = records.get(record.paymentId);
+			// Monotonic guard: a re-delivered or reordered earlier-stage status
+			// (e.g. a late `pending` arriving after `success`) must not regress a
+			// settled payment. Keep the existing record untouched in that case.
+			if (existing && isStatusRegression(existing.status, record.status)) {
+				return Promise.resolve();
+			}
 			records.set(record.paymentId, {
 				...record,
 				createdAt: existing?.createdAt ?? record.timestamp,

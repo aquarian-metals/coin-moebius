@@ -1,4 +1,8 @@
-import type { PaymentResult, WebhookEvent } from '@aquarian-metals/coin-moebius-core';
+import {
+	minorToMajorUnits,
+	type PaymentResult,
+	type WebhookEvent,
+} from '@aquarian-metals/coin-moebius-core';
 import Stripe from 'stripe';
 
 export interface StripeVerifierConfig {
@@ -120,7 +124,7 @@ export function createStripeVerifier(config: StripeVerifierConfig) {
 				// the contract total.
 				paymentId: paymentIntentId ?? session.id,
 				provider: 'stripe',
-				amount: (session.amount_total ?? 0) / 100,
+				amount: minorToMajorUnits(session.amount_total ?? 0, session.currency ?? 'usd'),
 				currency: (session.currency ?? 'usd').toUpperCase(),
 				metadata: {
 					...(session.metadata ?? {}),
@@ -147,11 +151,11 @@ export function createStripeVerifier(config: StripeVerifierConfig) {
 				status: 'refunded',
 				paymentId: paymentIntentId,
 				provider: 'stripe',
-				amount: refundedAmount / 100,
+				amount: minorToMajorUnits(refundedAmount, charge.currency ?? 'usd'),
 				currency: (charge.currency ?? 'usd').toUpperCase(),
 				metadata: {
 					originalChargeId: charge.id,
-					originalAmount: (charge.amount ?? 0) / 100,
+					originalAmount: minorToMajorUnits(charge.amount ?? 0, charge.currency ?? 'usd'),
 				},
 				timestamp: Date.now(),
 				raw: event,
@@ -173,7 +177,7 @@ export function createStripeVerifier(config: StripeVerifierConfig) {
 				// The disputed amount may differ from the original payment if
 				// the buyer disputes only part of it. Default to the dispute's
 				// reported amount, fall back to the original charge amount.
-				amount: (dispute.amount ?? 0) / 100,
+				amount: minorToMajorUnits(dispute.amount ?? 0, dispute.currency ?? 'usd'),
 				currency: (dispute.currency ?? 'usd').toUpperCase(),
 				metadata: {
 					disputeId: dispute.id,
@@ -295,7 +299,7 @@ function toSubscriptionEvent(
 		customerRef,
 		status: mapSubscriptionStatus(sub.status),
 		currentPeriodEnd: readSubscriptionCurrentPeriodEnd(sub),
-		amount: unitAmount / 100,
+		amount: minorToMajorUnits(unitAmount, currency),
 		currency,
 		metadata: {
 			stripeStatus: sub.status,
@@ -340,7 +344,10 @@ function toSubscriptionEventFromInvoice(
 		customerRef,
 		status,
 		currentPeriodEnd: invoice.period_end ?? null,
-		amount: (invoice.amount_paid ?? invoice.amount_due ?? 0) / 100,
+		amount: minorToMajorUnits(
+			invoice.amount_paid ?? invoice.amount_due ?? 0,
+			invoice.currency ?? 'usd',
+		),
 		currency,
 		metadata: {
 			invoiceId: invoice.id,
@@ -371,7 +378,10 @@ function toPaymentFromInvoice(
 		// the invoice id is the stable cross-event handle.
 		paymentId: invoice.id ?? '',
 		provider: 'stripe',
-		amount: (invoice.amount_paid ?? invoice.amount_due ?? 0) / 100,
+		amount: minorToMajorUnits(
+			invoice.amount_paid ?? invoice.amount_due ?? 0,
+			invoice.currency ?? 'usd',
+		),
 		currency: (invoice.currency ?? 'usd').toUpperCase(),
 		metadata: {
 			invoiceId: invoice.id,

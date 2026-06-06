@@ -76,6 +76,34 @@ describe('createVerifierRegistry', () => {
 		expect(stripeVerifier).not.toHaveBeenCalled();
 	});
 
+	it('refuses to pick among MULTIPLE verifiers from request data (SDK C3 — provider confusion)', async () => {
+		const verifiers = createVerifierRegistry();
+		const stripe = vi.fn(async () => null);
+		const cryptomus = vi.fn(async () => null);
+		verifiers.register('stripe', stripe);
+		verifiers.register('cryptomus', cryptomus);
+
+		// An attacker-set x-provider must NOT steer the choice when >1 is registered.
+		await expect(verifiers.verify({}, { 'x-provider': 'stripe' })).rejects.toThrow(
+			/refusing to resolve the provider from request data/,
+		);
+		expect(stripe).not.toHaveBeenCalled();
+		expect(cryptomus).not.toHaveBeenCalled();
+	});
+
+	it('dispatches to an explicit providerId passed from a trusted channel (SDK C3)', async () => {
+		const verifiers = createVerifierRegistry();
+		const stripe = vi.fn(async () => null);
+		const cryptomus = vi.fn(async () => null);
+		verifiers.register('stripe', stripe);
+		verifiers.register('cryptomus', cryptomus);
+
+		// Even with a conflicting x-provider header, the explicit id wins.
+		await verifiers.verify({}, { 'x-provider': 'cryptomus' }, 'stripe');
+		expect(stripe).toHaveBeenCalledOnce();
+		expect(cryptomus).not.toHaveBeenCalled();
+	});
+
 	it('re-registering a provider replaces the previous verifier', async () => {
 		const verifiers = createVerifierRegistry();
 		const oldVerifier = vi.fn(async () => ({

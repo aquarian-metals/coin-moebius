@@ -31,11 +31,12 @@
  * polluting their transaction store.
  */
 
-import type {
-	PaymentResult,
-	SubscriptionEvent,
-	SubscriptionStatus,
-	WebhookEvent,
+import {
+	minorToMajorUnits,
+	type PaymentResult,
+	type SubscriptionEvent,
+	type SubscriptionStatus,
+	type WebhookEvent,
 } from '@aquarian-metals/coin-moebius-core';
 
 /** Default replay-tolerance window: reject deliveries whose signed timestamp is more than this many seconds from now. */
@@ -325,7 +326,7 @@ function toPaymentEvent(
 		status,
 		paymentId,
 		provider: 'dodopayments',
-		amount: minorToMajor(minor),
+		amount: minorToMajor(minor, data.currency),
 		currency: (data.currency ?? 'USD').toUpperCase(),
 		metadata: {
 			...(data.metadata ?? {}),
@@ -364,7 +365,7 @@ function toSubscriptionEvent(payload: DodoWebhookPayload): WebhookEvent {
 		customerRef,
 		status: mapSubscriptionStatus(data.status),
 		currentPeriodEnd: parseIsoToUnixSeconds(data.next_billing_date),
-		amount: minorToMajor(data.recurring_pre_tax_amount),
+		amount: minorToMajor(data.recurring_pre_tax_amount, data.currency),
 		currency: (data.currency ?? 'USD').toUpperCase(),
 		metadata: {
 			...(data.metadata ?? {}),
@@ -416,14 +417,12 @@ function mapSubscriptionStatus(status: string | undefined): SubscriptionStatus {
 }
 
 /**
- * Convert a minor-unit integer (cents) to a major-unit decimal. Mirrors the
- * Stripe verifier's unconditional `/100`: the SDK's other fiat provider takes
- * the same shortcut rather than carrying a per-currency exponent table, so we
- * stay consistent. Zero-decimal currencies (JPY, etc.) would need a divisor of
- * 1; revisit here and in the Stripe verifier together if that case ships.
+ * Convert a minor-unit integer to a major-unit decimal, respecting the
+ * currency's ISO-4217 exponent (W3) — JPY/KRW have no minor unit, KWD/BHD have
+ * three. Shares core's table with every other provider verifier.
  */
-function minorToMajor(minor: number | undefined): number {
-	return (minor ?? 0) / 100;
+function minorToMajor(minor: number | undefined, currency: string | undefined): number {
+	return minorToMajorUnits(minor ?? 0, currency ?? 'USD');
 }
 
 /** Parse an ISO 8601 timestamp to Unix seconds. Returns `null` when absent or unparseable. */

@@ -1,13 +1,24 @@
 import type { WebhookEvent } from '@aquarian-metals/coin-moebius-core';
 import crypto from 'node:crypto';
 
-// Cryptomus signs both directions with: md5( base64(jsonBody) + paymentApiKey ).
-// Reference: https://doc.cryptomus.com/business/general/sign
+// Cryptomus signs with: md5( base64(jsonBody) + paymentApiKey ).
+// Reference: https://doc.cryptomus.com/merchant-api/payments/webhook
 function cryptomusSign(jsonBody: string, paymentApiKey: string): string {
 	return crypto
 		.createHash('md5')
 		.update(Buffer.from(jsonBody).toString('base64') + paymentApiKey)
 		.digest('hex');
+}
+
+// W5: Cryptomus signs the PHP `json_encode($data, JSON_UNESCAPED_UNICODE)` of
+// the payload (sign field removed). PHP escapes forward slashes (`/` → `\/`)
+// but leaves unicode unescaped; JS `JSON.stringify` does NEITHER the slash
+// escaping. Cryptomus's own docs call this out and prescribe escaping slashes
+// in non-PHP code, so we match: JSON.stringify (unescaped unicode) + escape
+// `/`. Without this, any payload containing a slash (a URL, some addresses)
+// would mismatch and a legitimate webhook would be rejected.
+function phpJsonEncode(value: unknown): string {
+	return JSON.stringify(value).replace(/\//g, '\\/');
 }
 
 export interface CryptomusVerifierConfig {
@@ -16,6 +27,14 @@ export interface CryptomusVerifierConfig {
 }
 
 export function createCryptomusVerifier(config: CryptomusVerifierConfig) {
+	// Replay note: unlike the Monero verifier, we can't enforce a freshness
+	// window here — Cryptomus's webhook payload carries no timestamp/nonce to
+	// bind, and we don't control their sender. Replay is instead neutralized at
+	// the store layer: the monotonic `PaymentStore` guard makes a re-delivered
+	// status idempotent, and `markStatusAnnounced` gives exactly-once outbound
+	// announcement. Consumers MUST use an idempotent store (every gateway resends
+	// anyway). See packages/server/src/memory.ts.
+	//
 	// The signature check (MD5 hash) is synchronous, unlike Stripe's
 	// `constructEventAsync`. We keep `async` anyway because the contract is
 	// "this function always returns a Promise" — that lets thrown errors
@@ -27,7 +46,23 @@ export function createCryptomusVerifier(config: CryptomusVerifierConfig) {
 		rawBody: unknown,
 		_headers: unknown,
 	): Promise<WebhookEvent> {
-		const raw = rawBody as Record<string, unknown>;
+		// Accept EITHER the raw JSON string (the natural webhook body) or an
+		// already-parsed object. One verifier registry can then feed both Stripe
+		// (which needs the raw string for its signature) and Cryptomus from the
+		// SAME value: pass the raw request body and each provider takes what it
+		// needs. (The signature is still computed over the re-serialized fields;
+		// matching Cryptomus's exact PHP json_encode output byte-for-byte is a
+		// separate, sample-dependent task.)
+		let raw: Record<string, unknown>;
+		if (typeof rawBody === 'string') {
+			try {
+				raw = JSON.parse(rawBody) as Record<string, unknown>;
+			} catch {
+				throw new Error('coin-moebius/cryptomus: body is not valid JSON');
+			}
+		} else {
+			raw = rawBody as Record<string, unknown>;
+		}
 		const receivedSign = raw.sign;
 		if (!receivedSign || typeof receivedSign !== 'string') {
 			throw new Error('coin-moebius/cryptomus: missing sign field');
@@ -35,7 +70,7 @@ export function createCryptomusVerifier(config: CryptomusVerifierConfig) {
 
 		const { sign: _sign, ...payloadForSign } = raw;
 		void _sign;
-		const expectedSign = cryptomusSign(JSON.stringify(payloadForSign), config.paymentApiKey);
+		const expectedSign = cryptomusSign(phpJsonEncode(payloadForSign), config.paymentApiKey);
 
 		if (!timingSafeStringEqual(expectedSign, receivedSign)) {
 			throw new Error('coin-moebius/cryptomus: invalid signature');
@@ -118,7 +153,10 @@ export function createCryptomusCreator(config: CryptomusCreatorConfig) {
 			url_return: config.returnUrl,
 		};
 
-		const json = JSON.stringify(body);
+		// W5: sign AND send the PHP-style encoding (escaped slashes). The create
+		// body carries callback/return URLs, so a plain JSON.stringify would sign
+		// bytes Cryptomus re-encodes differently and reject the request.
+		const json = phpJsonEncode(body);
 		const sign = cryptomusSign(json, config.paymentApiKey);
 
 		const response = await fetch(apiUrl, {

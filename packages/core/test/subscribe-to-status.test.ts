@@ -114,6 +114,29 @@ describe('manager.subscribeToStatus', () => {
 		expect(onSuccess).toHaveBeenCalledTimes(1);
 	});
 
+	it('fires onFailed and STOPS polling on a terminal non-success status (W1)', async () => {
+		const refunded: PaymentResult = { ...pendingResult(), status: 'refunded' };
+		const fetchMock = vi
+			.spyOn(globalThis, 'fetch')
+			.mockResolvedValue(new Response(JSON.stringify(refunded), { status: 200 }));
+		const onFailed = vi.fn();
+		const payments = buildManager();
+
+		payments.subscribeToStatus(
+			'p1',
+			{ statusEndpoint: '/api/status', onFailed },
+			{ pollIntervalMs: 1000 },
+		);
+
+		await vi.advanceTimersByTimeAsync(1100);
+		expect(onFailed).toHaveBeenCalledTimes(1);
+
+		// Polling must have stopped — no further fetches after the terminal status.
+		const callsAfterTerminal = fetchMock.mock.calls.length;
+		await vi.advanceTimersByTimeAsync(10000);
+		expect(fetchMock.mock.calls.length).toBe(callsAfterTerminal);
+	});
+
 	it('returns an unsubscribe that halts polling', async () => {
 		const fetchMock = vi
 			.spyOn(globalThis, 'fetch')

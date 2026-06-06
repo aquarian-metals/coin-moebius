@@ -59,6 +59,27 @@ describe('createMemoryStore', () => {
 		expect(fetched?.updatedAt).toBe(1_700_000_100_000);
 	});
 
+	it('does not let a late lower-rank status regress a settled payment (SDK C2)', async () => {
+		const store = createMemoryStore();
+		await store.upsert(makeRecord({ paymentId: 'pi_1', status: 'success', timestamp: 100 }));
+
+		// A reordered/replayed `pending` arrives after `success`.
+		await store.upsert(makeRecord({ paymentId: 'pi_1', status: 'pending', timestamp: 200 }));
+
+		const fetched = await store.get('pi_1');
+		expect(fetched?.status).toBe('success'); // not regressed to pending
+		expect(fetched?.updatedAt).toBe(100); // the stale update was ignored entirely
+	});
+
+	it('still advances forward (pending -> success) and to terminal refunded', async () => {
+		const store = createMemoryStore();
+		await store.upsert(makeRecord({ paymentId: 'pi_1', status: 'pending', timestamp: 100 }));
+		await store.upsert(makeRecord({ paymentId: 'pi_1', status: 'success', timestamp: 200 }));
+		expect((await store.get('pi_1'))?.status).toBe('success');
+		await store.upsert(makeRecord({ paymentId: 'pi_1', status: 'refunded', timestamp: 300 }));
+		expect((await store.get('pi_1'))?.status).toBe('refunded');
+	});
+
 	it('isolates state across distinct stores', async () => {
 		const a = createMemoryStore();
 		const b = createMemoryStore();

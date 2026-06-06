@@ -11,6 +11,12 @@ function cryptomusSign(jsonBody: string, key: string) {
 		.digest('hex');
 }
 
+// Mirrors PHP `json_encode($data, JSON_UNESCAPED_UNICODE)`: forward slashes
+// escaped, unicode left alone — what Cryptomus actually signs.
+function phpJson(value: unknown): string {
+	return JSON.stringify(value).replace(/\//g, '\\/');
+}
+
 const KEY = 'cryptomus_payment_api_key';
 const MERCHANT = 'merchant-uuid-abc';
 
@@ -41,6 +47,51 @@ describe('createCryptomusVerifier', () => {
 			txHash: 'tx-1',
 			confirmations: 6,
 		});
+	});
+
+	it('verifies a payload containing slashes using PHP-style signing (SDK W5)', async () => {
+		const verify = createCryptomusVerifier({ merchantUuid: MERCHANT, paymentApiKey: KEY });
+		// A real payload often carries slashes (URLs, some addresses). Cryptomus
+		// signs the PHP json_encode (escaped slashes); the SDK must match.
+		const payload = {
+			uuid: 'crypt-uuid-slash',
+			order_id: 'order/with/slashes',
+			status: 'paid',
+			amount: '1.00',
+			currency: 'USDT',
+			url_callback: 'https://merchant.example/webhooks/cryptomus',
+		};
+		const sign = cryptomusSign(phpJson(payload), KEY);
+
+		// PHP-style sign verifies.
+		const ok = asPayment(await verify({ ...payload, sign }, undefined));
+		expect(ok!.status).toBe('success');
+
+		// The OLD plain JSON.stringify sign (unescaped slashes) must NOT verify —
+		// proving we now match PHP, not JS.
+		const jsSign = cryptomusSign(JSON.stringify(payload), KEY);
+		expect(jsSign).not.toBe(sign);
+		await expect(verify({ ...payload, sign: jsSign }, undefined)).rejects.toThrow(
+			/invalid signature/,
+		);
+	});
+
+	it('accepts the RAW JSON string body, not just a parsed object (SDK C1)', async () => {
+		const verify = createCryptomusVerifier({ merchantUuid: MERCHANT, paymentApiKey: KEY });
+		const payload = {
+			uuid: 'crypt-uuid-str',
+			status: 'paid',
+			amount: '0.5',
+			currency: 'XMR',
+			address: '4abc...',
+		};
+		const sign = cryptomusSign(JSON.stringify(payload), KEY);
+
+		// Pass the raw request body as a string — the same value a registry would
+		// hand Stripe — and Cryptomus parses it internally.
+		const result = asPayment(await verify(JSON.stringify({ ...payload, sign }), undefined));
+		expect(result!.status).toBe('success');
+		expect(result!.paymentId).toBe('crypt-uuid-str');
 	});
 
 	it('marks unfinished statuses as pending', async () => {
@@ -187,7 +238,9 @@ describe('createCryptomusCreator', () => {
 			status: 'paid',
 			address: 'a1',
 		};
-		const sign = cryptomusSign(JSON.stringify(webhookPayload), KEY);
+		// The payload carries callback/return URLs, so it must be signed PHP-style
+		// (escaped slashes) — the same scheme the verifier now uses (W5).
+		const sign = cryptomusSign(phpJson(webhookPayload), KEY);
 
 		const verify = createCryptomusVerifier({ merchantUuid: MERCHANT, paymentApiKey: KEY });
 		const result = asPayment(await verify({ ...webhookPayload, sign }, undefined));

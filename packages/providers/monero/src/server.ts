@@ -112,7 +112,20 @@ export interface MoneroCreateResult {
 export interface MoneroVerifierConfig {
 	/** Shared secret used by the indexer when signing webhooks and the verifier when validating them. */
 	hmacSecret: string;
+	/**
+	 * Replay guard (C4): max allowed difference between the webhook's signed
+	 * `timestamp` and the verifier's clock, in ms. The indexer stamps the
+	 * payload at emit time and the timestamp is covered by the signature, so a
+	 * captured webhook replayed later falls outside this window and is rejected
+	 * (an attacker can't refresh the timestamp without the HMAC secret). Wide
+	 * enough to absorb delivery latency + clock skew. Default 5 minutes.
+	 */
+	freshnessToleranceMs?: number;
+	/** Time source, overridable for tests. Defaults to `Date.now`. */
+	now?: () => number;
 }
+
+const DEFAULT_WEBHOOK_FRESHNESS_MS = 5 * 60 * 1000;
 
 /**
  * The exact JSON payload the indexer POSTs and the verifier validates.
@@ -356,6 +369,19 @@ export function createMoneroVerifier(config: MoneroVerifierConfig): MoneroVerifi
 			const expected = await computeMoneroSignature(canonical, config.hmacSecret);
 			if (!timingSafeStringEqual(expected, sig)) {
 				throw new Error('coin-moebius/monero: invalid signature');
+			}
+
+			// C4: with a valid signature, enforce freshness on the signed
+			// timestamp. A replayed (or far-future) webhook is rejected here; the
+			// attacker can't move the timestamp back into the window without the
+			// secret. Checked AFTER the signature so we never trust an unsigned ts.
+			const tolerance = config.freshnessToleranceMs ?? DEFAULT_WEBHOOK_FRESHNESS_MS;
+			const nowMs = (config.now ?? Date.now)();
+			if (
+				typeof payload.timestamp !== 'number' ||
+				Math.abs(nowMs - payload.timestamp) > tolerance
+			) {
+				throw new Error('coin-moebius/monero: webhook timestamp outside the freshness window');
 			}
 
 			return toPaymentResult(payload);

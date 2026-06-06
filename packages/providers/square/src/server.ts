@@ -37,7 +37,11 @@
  * webhook's `event_id` field. Documented in the README.
  */
 
-import type { PaymentResult, WebhookEvent } from '@aquarian-metals/coin-moebius-core';
+import {
+	minorToMajorUnits,
+	type PaymentResult,
+	type WebhookEvent,
+} from '@aquarian-metals/coin-moebius-core';
 
 export interface SquareVerifierConfig {
 	/**
@@ -353,8 +357,8 @@ function readSquareSubscriptionAmount(invoice: SquareInvoiceObject | undefined):
 } {
 	const money = invoice?.payment_requests?.[0]?.computed_amount_money;
 	const cents = money?.amount;
-	const amount = typeof cents === 'number' ? cents / 100 : 0;
 	const currency = (money?.currency ?? 'USD').toUpperCase();
+	const amount = typeof cents === 'number' ? minorToMajorUnits(cents, currency) : 0;
 	return { amount, currency };
 }
 
@@ -422,7 +426,7 @@ function readDetails(
 	// `amount` semantics (Stripe verifier does the same `/100`).
 	const minorAmount = typeof money?.amount === 'number' ? money.amount : 0;
 	const currency = (money?.currency ?? 'USD').toUpperCase();
-	const amount = minorAmount / 100;
+	const amount = minorToMajorUnits(minorAmount, currency);
 
 	return { paymentId: correlationPaymentId, amount, currency };
 }

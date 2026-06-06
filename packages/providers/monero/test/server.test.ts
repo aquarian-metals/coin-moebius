@@ -13,6 +13,7 @@ import {
 const WALLET_URL = 'http://wallet-rpc.test';
 const WEBHOOK_URL = 'http://webhook.test/api/payment-webhook';
 const SECRET = 'hmac_secret_unit_tests_only';
+const WEBHOOK_TS = 1_700_000_000_000;
 
 /**
  * Normalize a fetch `RequestInfo | URL` input down to a plain URL
@@ -250,17 +251,22 @@ describe('createMoneroVerifier', () => {
 			receivedAmountXmr: 0.1,
 			confirmations: 10,
 			blockHeight: 3000000,
-			timestamp: 1_700_000_000_000,
+			timestamp: WEBHOOK_TS,
 			...overrides,
 		};
 	}
+
+	// Pin the verifier's clock to the payloads' fixed timestamp so the C4
+	// freshness window is satisfied for the happy-path tests. The replay test
+	// below exercises a clock that's moved well past the window.
+	const makeVerifier = () => createMoneroVerifier({ hmacSecret: SECRET, now: () => WEBHOOK_TS });
 
 	it('throws at construction when hmacSecret is missing', () => {
 		expect(() => createMoneroVerifier({ hmacSecret: '' })).toThrow(/hmacSecret missing/);
 	});
 
 	it('accepts a correctly-signed success payload and maps it to PaymentResult', async () => {
-		const verifier = createMoneroVerifier({ hmacSecret: SECRET });
+		const verifier = makeVerifier();
 		const payload = makeWebhookPayload();
 		const sig = await computeMoneroSignature(JSON.stringify(payload), SECRET);
 
@@ -278,7 +284,7 @@ describe('createMoneroVerifier', () => {
 	});
 
 	it('maps partial payments to a prorated invoice amount', async () => {
-		const verifier = createMoneroVerifier({ hmacSecret: SECRET });
+		const verifier = makeVerifier();
 		const payload = makeWebhookPayload({
 			status: 'partial',
 			invoiceAmount: 100,
@@ -294,7 +300,7 @@ describe('createMoneroVerifier', () => {
 	});
 
 	it('maps failed payments to amount 0', async () => {
-		const verifier = createMoneroVerifier({ hmacSecret: SECRET });
+		const verifier = makeVerifier();
 		const payload = makeWebhookPayload({
 			status: 'failed',
 			txHash: null,
@@ -311,12 +317,12 @@ describe('createMoneroVerifier', () => {
 	});
 
 	it('rejects a payload with no signature header', async () => {
-		const verifier = createMoneroVerifier({ hmacSecret: SECRET });
+		const verifier = makeVerifier();
 		await expect(verifier.verify(makeWebhookPayload(), {})).rejects.toThrow(/missing x-monero-sig/);
 	});
 
 	it('rejects a payload with an invalid signature', async () => {
-		const verifier = createMoneroVerifier({ hmacSecret: SECRET });
+		const verifier = makeVerifier();
 		const payload = makeWebhookPayload();
 		const wrongSig = await computeMoneroSignature(JSON.stringify(payload), 'wrong_key');
 		await expect(verifier.verify(payload, { 'x-monero-sig': wrongSig })).rejects.toThrow(
@@ -325,7 +331,7 @@ describe('createMoneroVerifier', () => {
 	});
 
 	it('rejects a tampered body even with the original signature', async () => {
-		const verifier = createMoneroVerifier({ hmacSecret: SECRET });
+		const verifier = makeVerifier();
 		const sig = await computeMoneroSignature(JSON.stringify(makeWebhookPayload()), SECRET);
 		const tampered = makeWebhookPayload({ invoiceAmount: 999999 });
 		await expect(verifier.verify(tampered, { 'x-monero-sig': sig })).rejects.toThrow(
@@ -333,8 +339,23 @@ describe('createMoneroVerifier', () => {
 		);
 	});
 
+	it('rejects a replayed webhook whose signed timestamp is stale (C4)', async () => {
+		const payload = makeWebhookPayload();
+		const sig = await computeMoneroSignature(JSON.stringify(payload), SECRET);
+		// Valid signature, but the verifier's clock is an hour past the signed
+		// timestamp — a captured webhook replayed later. The attacker can't move
+		// the timestamp without breaking the signature.
+		const stale = createMoneroVerifier({
+			hmacSecret: SECRET,
+			now: () => WEBHOOK_TS + 60 * 60 * 1000,
+		});
+		await expect(stale.verify(payload, { 'x-monero-sig': sig })).rejects.toThrow(
+			/freshness window/,
+		);
+	});
+
 	it('accepts the body as a raw JSON string identically to a parsed object', async () => {
-		const verifier = createMoneroVerifier({ hmacSecret: SECRET });
+		const verifier = makeVerifier();
 		const payload = makeWebhookPayload();
 		const bodyString = JSON.stringify(payload);
 		const sig = await computeMoneroSignature(bodyString, SECRET);
@@ -345,7 +366,7 @@ describe('createMoneroVerifier', () => {
 	});
 
 	it('rejects non-JSON, non-object bodies', async () => {
-		const verifier = createMoneroVerifier({ hmacSecret: SECRET });
+		const verifier = makeVerifier();
 		const sig = await computeMoneroSignature('not json', SECRET);
 		await expect(verifier.verify('not json', { 'x-monero-sig': sig })).rejects.toThrow(
 			/not valid JSON/,
