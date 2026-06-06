@@ -206,6 +206,41 @@ describe('createAuthorizenetVerifier', () => {
 		const result = asPayment(await verifier.verify(body, await signedHeaders(body)));
 		expect(result?.amount).toBe(5.5);
 	});
+
+	it('rejects a signature whose length does not match the expected digest', async () => {
+		const body = sampleBody();
+		const verifier = makeVerifier();
+		await expect(verifier.verify(body, { 'x-anet-signature': 'sha512=abcd' })).rejects.toThrow(
+			/invalid signature/,
+		);
+	});
+
+	it('accepts a pre-parsed object body equivalently to a string', async () => {
+		const bodyString = sampleBody();
+		const headers = await signedHeaders(bodyString);
+		const verifier = makeVerifier();
+		const result = asPayment(await verifier.verify(JSON.parse(bodyString), headers));
+		expect(result?.status).toBe('success');
+		expect(result?.paymentId).toBe('TRANS_ID_001');
+	});
+
+	it('returns null for a signed delivery that carries no eventType', async () => {
+		const body = JSON.stringify({ notificationId: 'n', payload: { id: 'X' } });
+		const verifier = makeVerifier();
+		expect(await verifier.verify(body, await signedHeaders(body))).toBeNull();
+	});
+
+	it('handles a payment event with no payload (empty id, zero amount)', async () => {
+		const body = JSON.stringify({
+			notificationId: 'n',
+			eventType: 'net.authorize.payment.refund.created',
+		});
+		const verifier = makeVerifier();
+		const result = asPayment(await verifier.verify(body, await signedHeaders(body)));
+		expect(result?.status).toBe('refunded');
+		expect(result?.paymentId).toBe('');
+		expect(result?.amount).toBe(0);
+	});
 });
 
 describe('event → SubscriptionEvent mapping (Authorize.net ARB)', () => {
@@ -314,6 +349,18 @@ describe('event → SubscriptionEvent mapping (Authorize.net ARB)', () => {
 		});
 		const result = asSubscription(await makeVerifier().verify(body, await signedHeaders(body)));
 		expect(result!.type).toBe('subscription.canceled');
+	});
+
+	it('resolves the subscriptionId from the subscriptionId field when payload.id is absent', async () => {
+		const body = JSON.stringify({
+			notificationId: 'arb_sid',
+			eventType: 'net.authorize.customer.subscription.created',
+			payload: { subscriptionId: 998877, name: 'Pro Plan', customerProfileId: 555 },
+		});
+		const result = asSubscription(await makeVerifier().verify(body, await signedHeaders(body)));
+		expect(result!.subscriptionId).toBe('998877');
+		expect(result!.productId).toBe('Pro Plan');
+		expect(result!.customerRef).toBe('555');
 	});
 });
 

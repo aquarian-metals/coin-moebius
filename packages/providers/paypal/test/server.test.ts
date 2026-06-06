@@ -816,6 +816,48 @@ describe('event → SubscriptionEvent mapping (PayPal billing events)', () => {
 		expect(result!.type).toBe('subscription.canceled');
 		expect(result!.status).toBe('canceled');
 	});
+
+	it('maps BILLING.SUBSCRIPTION.EXPIRED to subscription.updated', async () => {
+		const result = await verifySub({
+			event_type: 'BILLING.SUBSCRIPTION.EXPIRED',
+			resource: { id: 'I-SUB-EXP', status: 'EXPIRED' },
+		});
+		expect(result!.type).toBe('subscription.updated');
+		expect(result!.status).toBe('canceled');
+	});
+
+	it('returns null when the subscription resource is absent', async () => {
+		const result = await verifySub({ event_type: 'BILLING.SUBSCRIPTION.ACTIVATED' });
+		expect(result).toBeNull();
+	});
+
+	it('applies safe defaults for a minimal subscription resource', async () => {
+		const result = await verifySub({
+			event_type: 'BILLING.SUBSCRIPTION.UPDATED',
+			resource: { id: 'I-MIN' },
+		});
+		expect(result!.status).toBe('unknown');
+		expect(result!.productId).toBeNull();
+		expect(result!.customerRef).toBeNull();
+		expect(result!.currentPeriodEnd).toBeNull();
+		expect(result!.amount).toBe(0);
+		expect(result!.currency).toBe('USD');
+		expect(result!.metadata).not.toHaveProperty('customerRef');
+	});
+
+	it('falls back to the raw subscriber status for status-neutral event types', async () => {
+		const suspended = await verifySub({
+			event_type: 'BILLING.SUBSCRIPTION.UPDATED',
+			resource: { id: 'I-S', status: 'SUSPENDED' },
+		});
+		expect(suspended!.status).toBe('paused');
+
+		const expired = await verifySub({
+			event_type: 'BILLING.SUBSCRIPTION.UPDATED',
+			resource: { id: 'I-E', status: 'EXPIRED' },
+		});
+		expect(expired!.status).toBe('canceled');
+	});
 });
 
 describe('getPaypalPortalUrl', () => {
