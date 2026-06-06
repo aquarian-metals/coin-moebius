@@ -1,18 +1,23 @@
 #!/usr/bin/env node
 /**
- * One-off release helper: set every PUBLIC package to a target version and
- * update internal dependency ranges to match. Used instead of `changeset
- * version` for the v3 release because the fixed-group changesets resolve to a
- * version that already exists on npm. Delete after the release settles.
+ * Set every PUBLIC package to a target version and update internal dependency
+ * ranges to match. This is the canonical bumper, called by scripts/release.mjs;
+ * it can also be run directly via `npm run bump <version>`. Keeps all public
+ * packages on a single locked version (fixed versioning) so "the version" is
+ * unambiguous across npm and git.
  *
- * Usage:  node scripts/bump-version.mjs <version>   (default 3.0.0)
+ * Usage:  node scripts/bump-version.mjs <version>
  */
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const TARGET = process.argv[2] || '3.0.0';
+const TARGET = process.argv[2];
+if (!TARGET || !/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(TARGET)) {
+	console.error(`Usage: node scripts/bump-version.mjs <version>   (got: ${TARGET ?? '<none>'})`);
+	process.exit(1);
+}
 
 const workspaces = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')).workspaces;
 const pkgPaths = workspaces
