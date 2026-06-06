@@ -55,6 +55,10 @@
 		"typescript-eslint": "^8.12.0",
 		"vitest": "^4.1.0"
 	},
+	"overridesNote": "fflate is pinned to 0.8.2 because @arethetypeswrong/cli@0.16.4 reads fflate's streaming Gunzip via a callback that keeps only the last chunk; fflate 0.8.3's multi-chunk output makes attw read an empty tarball and crash with `reading 'filename'`. Remove this override once attw is upgraded past the fflate streaming fix.",
+	"overrides": {
+		"fflate": "0.8.2"
+	},
 	"lint-staged": {
 		"*.{ts,tsx,js,mjs,cjs}": [
 			"prettier --write",
