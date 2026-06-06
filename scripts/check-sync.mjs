@@ -52,7 +52,11 @@ for (const p of publicPkgs) {
 }
 const expectedTag = `v${canonical}`;
 
-// 2. Git tag exists and points at the current commit.
+// 2. A git tag exists for the canonical version. HEAD being AHEAD of the tag is
+// normal and not a desync: post-release commits (dep bumps, docs, tests)
+// accumulate on main before the next version is cut. The version numbers are
+// what must agree (package.json == npm == tag); only a missing tag is a problem.
+// release.mjs runs this immediately after tagging, when HEAD === the tag.
 let gitState = 'skipped';
 if (!skipGit) {
 	const head = sh('git rev-parse HEAD');
@@ -60,12 +64,11 @@ if (!skipGit) {
 	if (!tagExists) {
 		gitState = 'MISSING';
 		problems.push(`git tag ${expectedTag} does not exist`);
+	} else if (sh(`git rev-list -n 1 ${expectedTag}`) === head) {
+		gitState = expectedTag;
 	} else {
-		const tagCommit = sh(`git rev-list -n 1 ${expectedTag}`);
-		gitState = tagCommit === head ? expectedTag : `${expectedTag} (off HEAD)`;
-		if (tagCommit !== head) {
-			problems.push(`git tag ${expectedTag} does not point at HEAD (${head.slice(0, 7)})`);
-		}
+		const ahead = sh(`git rev-list --count ${expectedTag}..HEAD`);
+		gitState = `${expectedTag} (+${ahead} unreleased commit${ahead === '1' ? '' : 's'})`;
 	}
 }
 
