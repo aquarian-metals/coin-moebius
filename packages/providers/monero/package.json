@@ -1,6 +1,6 @@
 {
 	"name": "@aquarian-metals/coin-moebius-monero",
-	"version": "3.0.0",
+	"version": "4.0.0",
 	"description": "Self-hosted Monero provider for Coin Moebius — direct wallet-RPC integration. No third-party gateway, no custodial keys, no API tokens. The merchant runs monerod + monero-wallet-rpc and a small indexer; this package supplies the browser provider, the server-side creator (subaddress minting), the webhook verifier, and the indexer factory.",
 	"keywords": [
 		"payments",
@@ -50,10 +50,10 @@
 		"node": ">=18"
 	},
 	"dependencies": {
-		"@aquarian-metals/coin-moebius-core": "^3.0.0"
+		"@aquarian-metals/coin-moebius-core": "^4.0.0"
 	},
 	"devDependencies": {
-		"@aquarian-metals/coin-moebius-server": "^3.0.0",
+		"@aquarian-metals/coin-moebius-server": "^4.0.0",
 		"typescript": "~5.8.0"
 	},
 	"publishConfig": {
