@@ -4,6 +4,7 @@ import {
 	createDodoPaymentsVerifier,
 	computeDodoSignature,
 	getDodoPortalUrl,
+	createDodoSubscriptionCheckout,
 	type DodoWebhookPayload,
 } from '../src/server.js';
 
@@ -484,5 +485,69 @@ describe('getDodoPortalUrl', () => {
 				customerId: 'cus_1',
 			}),
 		).rejects.toThrow(/missing `link`/);
+	});
+});
+
+describe('createDodoSubscriptionCheckout', () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it('posts a subscription checkout to /checkouts and returns the hosted url + session id', async () => {
+		const fetchSpy = vi
+			.spyOn(globalThis, 'fetch')
+			.mockResolvedValue(
+				new Response(
+					JSON.stringify({ session_id: 'cks_1', checkout_url: 'https://checkout.dodo/cks_1' }),
+					{ status: 200 },
+				),
+			);
+		const result = await createDodoSubscriptionCheckout({
+			apiKey: 'key_1',
+			apiBase: 'https://live.dodopayments.com/',
+			productId: 'pdt_recurring',
+			returnUrl: 'https://shop.example/thanks',
+			metadata: { productId: 'pro-plan' },
+		});
+		expect(result).toEqual({ checkoutUrl: 'https://checkout.dodo/cks_1', sessionId: 'cks_1' });
+
+		const [calledUrl, init] = fetchSpy.mock.calls[0];
+		expect(calledUrl as string).toBe('https://live.dodopayments.com/checkouts');
+		const body = JSON.parse(init!.body as string) as {
+			product_cart: { product_id: string; quantity: number }[];
+			subscription_data: unknown;
+			return_url: string;
+			metadata: Record<string, string>;
+		};
+		expect(body.product_cart).toEqual([{ product_id: 'pdt_recurring', quantity: 1 }]);
+		expect(body.subscription_data).toBeDefined();
+		expect(body.return_url).toBe('https://shop.example/thanks');
+		expect(body.metadata).toEqual({ productId: 'pro-plan' });
+	});
+
+	it('throws when Dodo rejects the request', async () => {
+		vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('bad', { status: 422 }));
+		await expect(
+			createDodoSubscriptionCheckout({
+				apiKey: 'k',
+				apiBase: 'https://live.dodopayments.com',
+				productId: 'pdt_x',
+				returnUrl: 'https://shop.example/thanks',
+			}),
+		).rejects.toThrow(/subscription checkout failed/);
+	});
+
+	it('throws when the response carries no checkout_url (and omits metadata when not given)', async () => {
+		vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+			new Response(JSON.stringify({ session_id: 'cks_2' }), { status: 200 }),
+		);
+		await expect(
+			createDodoSubscriptionCheckout({
+				apiKey: 'k',
+				apiBase: 'https://live.dodopayments.com',
+				productId: 'pdt_x',
+				returnUrl: 'https://shop.example/thanks',
+			}),
+		).rejects.toThrow(/missing `checkout_url`/);
 	});
 });

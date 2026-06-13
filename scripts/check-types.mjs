@@ -8,9 +8,15 @@
  */
 import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
 
-const root = new URL('..', import.meta.url).pathname;
-const rootPkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+// fileURLToPath (not URL.pathname) so a checkout path containing spaces — which
+// pathname would percent-encode into a non-existent directory, breaking the
+// execSync cwd below — resolves to the real filesystem path. Matches
+// scripts/bump-version.mjs and scripts/release.mjs.
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const rootPkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'));
 
 const workspaces = rootPkg.workspaces
 	.filter((p) => p.startsWith('packages/'))
@@ -36,7 +42,7 @@ for (const ws of workspaces) {
 	console.log(`\n=== ${ws} ===`);
 	try {
 		execSync(`npx attw --pack --ignore-rules ${IGNORE_RULES.join(' ')}`, {
-			cwd: `${root}/${ws}`,
+			cwd: resolve(root, ws),
 			stdio: 'inherit',
 		});
 	} catch (err) {
