@@ -1,5 +1,18 @@
 # @aquarian-metals/coin-moebius-dodopayments
 
+## 4.1.0
+
+### Minor Changes
+
+- Add `createDodoSubscriptionCheckout` to the server entry
+  (`@aquarian-metals/coin-moebius-dodopayments/server`). It creates a Dodo-hosted
+  Checkout Session for a subscription against a pre-built recurring Dodo product
+  and returns the hosted `checkout_url` and `sessionId`. The buyer is anonymous —
+  Dodo's hosted page collects their details — and the subscription auto-renews
+  (no `on_demand` mandate), so Dodo charges each period itself. Buyers self-manage
+  (cancel, update card) through the Customer Portal via the existing
+  `getDodoPortalUrl`.
+
 ## 1.0.0
 
 ### Minor Changes

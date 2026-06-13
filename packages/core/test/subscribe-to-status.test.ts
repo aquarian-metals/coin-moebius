@@ -20,9 +20,16 @@ function successResult(): PaymentResult {
 describe('manager.subscribeToStatus', () => {
 	beforeEach(() => {
 		vi.useFakeTimers();
+		// Pin the poll jitter (nextDelay uses Math.random for +/-10%) so the
+		// timer-advance assertions are deterministic. Without this, the tick that
+		// crosses timeoutMs lands at a jittered time and can slip just past a
+		// fixed advanceTimersByTimeAsync window under load (e.g. the coverage run),
+		// flaking the onTimeout test. 0.5 -> jitter factor 1.0 -> exact intervals.
+		vi.spyOn(Math, 'random').mockReturnValue(0.5);
 	});
 	afterEach(() => {
 		vi.useRealTimers();
+		vi.restoreAllMocks();
 	});
 
 	const buildManager = () =>

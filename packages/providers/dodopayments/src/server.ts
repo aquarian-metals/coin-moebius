@@ -130,6 +130,68 @@ export async function getDodoPortalUrl(opts: DodoPortalOptions): Promise<string>
 	return payload.link;
 }
 
+/** Options for {@link createDodoSubscriptionCheckout}. */
+export interface DodoSubscriptionCheckoutOptions {
+	/** Dodo API key (Bearer). */
+	apiKey: string;
+	/** API host, e.g. `https://test.dodopayments.com` or `https://live.dodopayments.com`. */
+	apiBase: string;
+	/** The merchant's pre-built recurring Dodo product id (`pdt_…`). */
+	productId: string;
+	/** Where Dodo returns the buyer after a completed checkout. */
+	returnUrl: string;
+	/** Metadata echoed back on the subscription/webhook (e.g. productId, customerRef). */
+	metadata?: Record<string, string>;
+}
+
+/** Result of {@link createDodoSubscriptionCheckout}. */
+export interface DodoSubscriptionCheckoutResult {
+	/** Hosted Dodo checkout URL to redirect the buyer to. */
+	checkoutUrl: string;
+	/** Dodo Checkout Session id. */
+	sessionId: string;
+}
+
+/**
+ * Create a Dodo-hosted Checkout Session for a SUBSCRIPTION against a pre-built
+ * recurring Dodo product. The buyer is anonymous, so we omit `customer` and
+ * `billing_address` and let Dodo's hosted page collect them. Omitting
+ * `on_demand` yields a provider-driven, auto-renewing subscription — Dodo
+ * charges each period itself, no cron on the consumer's side — and the buyer
+ * self-manages (cancel, update card) via the Customer Portal ({@link getDodoPortalUrl}).
+ *
+ * Lives in the Dodo provider (not the core), beside the portal + verifier
+ * helpers, so subscription support is a provider-package concern.
+ */
+export async function createDodoSubscriptionCheckout(
+	opts: DodoSubscriptionCheckoutOptions,
+): Promise<DodoSubscriptionCheckoutResult> {
+	const base = opts.apiBase.replace(/\/$/, '');
+	const response = await fetch(`${base}/checkouts`, {
+		method: 'POST',
+		headers: { Authorization: `Bearer ${opts.apiKey}`, 'Content-Type': 'application/json' },
+		body: JSON.stringify({
+			product_cart: [{ product_id: opts.productId, quantity: 1 }],
+			// Presence of subscription_data turns this into a subscription checkout;
+			// the recurring price comes from the (subscription-type) Dodo product.
+			subscription_data: {},
+			return_url: opts.returnUrl,
+			...(opts.metadata ? { metadata: opts.metadata } : {}),
+		}),
+	});
+	if (!response.ok) {
+		const detail = await response.text().catch(() => '');
+		throw new Error(
+			`coin-moebius/dodopayments: subscription checkout failed (${response.status}): ${detail.slice(0, 200)}`,
+		);
+	}
+	const payload = (await response.json()) as { checkout_url?: string; session_id?: string };
+	if (!payload.checkout_url) {
+		throw new Error('coin-moebius/dodopayments: checkout response missing `checkout_url`');
+	}
+	return { checkoutUrl: payload.checkout_url, sessionId: payload.session_id ?? '' };
+}
+
 /**
  * Build a Standard Webhooks verifier for Dodo Payments. The returned function
  * matches the `Verifier` contract from `@aquarian-metals/coin-moebius-server`:
