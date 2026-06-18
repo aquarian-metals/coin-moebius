@@ -38,6 +38,11 @@ module.exports = [
 		limit: '3 KB',
 	},
 	{
+		name: 'coin-moebius-makepay (client)',
+		path: 'packages/providers/makepay/dist/index.js',
+		limit: '3 KB',
+	},
+	{
 		name: 'coin-moebius-dodopayments (client)',
 		path: 'packages/providers/dodopayments/dist/index.js',
 		limit: '3 KB',

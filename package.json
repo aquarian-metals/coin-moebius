@@ -14,6 +14,7 @@
 		"packages/providers/square",
 		"packages/providers/monero",
 		"packages/providers/manual",
+		"packages/providers/makepay",
 		"packages/providers/template",
 		"packages/coin-moebius",
 		"examples/static-site-demo"
