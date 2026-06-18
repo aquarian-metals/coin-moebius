@@ -7,11 +7,11 @@
 		"build": "vite build"
 	},
 	"dependencies": {
-		"@aquarian-metals/coin-moebius": "4.0.1",
-		"@aquarian-metals/coin-moebius-cryptomus": "4.0.1",
-		"@aquarian-metals/coin-moebius-monero": "4.0.1",
-		"@aquarian-metals/coin-moebius-server": "4.0.1",
-		"@aquarian-metals/coin-moebius-stripe": "4.0.1",
+		"@aquarian-metals/coin-moebius": "4.1.0",
+		"@aquarian-metals/coin-moebius-cryptomus": "4.1.0",
+		"@aquarian-metals/coin-moebius-monero": "4.1.0",
+		"@aquarian-metals/coin-moebius-server": "4.1.0",
+		"@aquarian-metals/coin-moebius-stripe": "4.1.0",
 		"stripe": "^22.0.0"
 	},
 	"devDependencies": {

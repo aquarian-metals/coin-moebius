@@ -1,6 +1,6 @@
 {
 	"name": "@aquarian-metals/coin-moebius-dodopayments",
-	"version": "4.0.1",
+	"version": "4.1.0",
 	"description": "Dodo Payments provider for Coin Moebius — Merchant-of-Record hosted checkout for one-time and subscription payments, plus a server-only Standard Webhooks verifier under the ./server subpath.",
 	"keywords": [
 		"payments",
@@ -50,7 +50,7 @@
 		"node": ">=18"
 	},
 	"dependencies": {
-		"@aquarian-metals/coin-moebius-core": "^4.0.1"
+		"@aquarian-metals/coin-moebius-core": "^4.1.0"
 	},
 	"devDependencies": {
 		"typescript": "~5.8.0"
