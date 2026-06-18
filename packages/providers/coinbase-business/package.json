@@ -1,6 +1,6 @@
 {
 	"name": "@aquarian-metals/coin-moebius-coinbase-business",
-	"version": "4.0.1",
+	"version": "4.1.0",
 	"description": "Coinbase Business provider for Coin Moebius — hosted Checkout API redirect, plus a server-only Hook0 v1 webhook verifier and an optional programmatic webhook-subscription helper. Replaces the deprecated Coinbase Commerce surface.",
 	"keywords": [
 		"payments",
@@ -54,7 +54,7 @@
 		"node": ">=18"
 	},
 	"dependencies": {
-		"@aquarian-metals/coin-moebius-core": "^4.0.1"
+		"@aquarian-metals/coin-moebius-core": "^4.1.0"
 	},
 	"devDependencies": {
 		"typescript": "~5.8.0"

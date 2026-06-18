@@ -1,6 +1,6 @@
 {
 	"name": "@aquarian-metals/coin-moebius-nowpayments",
-	"version": "4.0.1",
+	"version": "4.1.0",
 	"description": "NOWPayments provider for Coin Moebius — hosted invoice flow for crypto checkout, plus a server-only IPN verifier under the ./server subpath. US-friendly alternative to Cryptomus.",
 	"keywords": [
 		"payments",
@@ -48,7 +48,7 @@
 		"node": ">=18"
 	},
 	"dependencies": {
-		"@aquarian-metals/coin-moebius-core": "^4.0.1"
+		"@aquarian-metals/coin-moebius-core": "^4.1.0"
 	},
 	"devDependencies": {
 		"typescript": "~5.8.0"
