@@ -2,7 +2,7 @@
 
 ## Reporting a vulnerability
 
-If you've found a security issue in `@aquarian-metals/coin-moebius` or any of its sibling packages, please email **theaquarian@aquarianmetals.com** rather than opening a public issue.
+If you've found a security issue in `@aquarian-metals/coin-moebius` or any of its sibling packages, please email **theaquarian@aquarianmetals.com** rather than opening a public issue. Please do not post security issues in our Discord either; email keeps them private until a fix ships. For all non-security questions, Discord is the right place: https://discord.gg/AQAvkv8mER
 
 What we'd love in the report:
 

@@ -2,6 +2,8 @@
 
 **The headless, zero-UI payment router for static sites.**
 
+[![Join the Discord](https://img.shields.io/badge/Discord-Join%20the%20chat-5865F2?logo=discord&logoColor=white)](https://discord.gg/AQAvkv8mER)
+
 Turn Stripe, NOWPayments, gold escrow, or literally anything else into a single, boring `onSuccess` callback.
 
 Static sites (JAMstack) are fast and cheap. But the second you want to accept money, you're forced to either rent a heavy, locked-in storefront (Gumroad, Payhip) or hand-roll a spaghetti monster of different webhooks for every gateway.
@@ -229,3 +231,13 @@ We expect the community to build the rest. Want to accept Solana, Lightning, or 
 - **[docs/subscriptions.md](./docs/subscriptions.md)** — how the SDK handles recurring billing on fiat providers. Covers the five normalized event types, the pass-through model, and the `getStripePortalUrl` helper for cancellation.
 - **[docs/accessibility.md](./docs/accessibility.md)** — the `<coin-moebius-buy>` button's WCAG 2.1 AA support, what's shared with the site owner (custom color contrast, icon-only labels), and the formal conformance report (VPAT).
 - **API reference** — generated from TSDoc via `npm run docs` → `docs/api/index.html`.
+
+---
+
+## Community and help
+
+Questions, bugs, or something you built with Coin Moebius? Come say hello in our Discord. Support happens there in the open, so the answer to your question helps the next person too.
+
+**[Join the Discord →](https://discord.gg/AQAvkv8mER)**
+
+Prefer GitHub? Open an issue for bugs and feature requests. For how-to questions, Discord is the faster path.
