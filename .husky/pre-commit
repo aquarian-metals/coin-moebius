@@ -1,1 +1,30 @@
+ALLOWED_EMAIL="theaquarian@aquarianmetals.com"
+
+# `git var` resolves the identity this commit will actually be recorded with,
+# including GIT_AUTHOR_EMAIL / GIT_COMMITTER_EMAIL overrides that `git config`
+# does not show. A commit that reaches the remote under another address cannot
+# be corrected without rewriting published history.
+ident_email() {
+	git var "$1" | sed -e 's/^.*<//' -e 's/>.*$//'
+}
+
+author_email=$(ident_email GIT_AUTHOR_IDENT)
+committer_email=$(ident_email GIT_COMMITTER_IDENT)
+
+for pair in "author:$author_email" "committer:$committer_email"; do
+	role=${pair%%:*}
+	email=${pair#*:}
+	if [ "$email" != "$ALLOWED_EMAIL" ]; then
+		echo "Blocked: the commit $role address is \"$email\"."
+		echo "This project commits as $ALLOWED_EMAIL and nothing else."
+		echo
+		echo "Set it for this repository:"
+		echo "    git config user.email $ALLOWED_EMAIL"
+		echo
+		echo "Then check the global default, which is where a wrong address usually comes from:"
+		echo "    git config --global user.email"
+		exit 1
+	fi
+done
+
 npx lint-staged
