@@ -135,8 +135,12 @@ const DEFAULT_WEBHOOK_FRESHNESS_MS = 5 * 60 * 1000;
 export interface MoneroWebhookPayload {
 	provider: 'monero';
 	paymentId: string;
-	/** Terminal status — `'success'`, `'partial'`, or `'failed'`. */
-	status: Extract<PaymentStatus, 'success' | 'partial' | 'failed'>;
+	/**
+	 * `'pending'` while the payment is on the chain and still gathering
+	 * confirmations, then one of the terminal three: `'success'`, `'partial'`,
+	 * or `'failed'`.
+	 */
+	status: Extract<PaymentStatus, 'pending' | 'success' | 'partial' | 'failed'>;
 	/** Transaction hash, or `null` when the status is `'failed'` due to expiry without payment. */
 	txHash: string | null;
 	address: string;
@@ -153,6 +157,13 @@ export interface MoneroWebhookPayload {
 	/** Decimal XMR convenience field for `receivedAmountAtomic`. */
 	receivedAmountXmr: number;
 	confirmations: number;
+	/**
+	 * How many confirmations this payment needs before it settles. Optional so
+	 * hand-written indexers built against an earlier version still compile;
+	 * without it a buyer-facing UI can show a count but not how far it has left
+	 * to go.
+	 */
+	requiredConfirmations?: number;
 	/** Block height the payment was first observed at, or `null` for expiry-failed. */
 	blockHeight: number | null;
 	timestamp: number;
@@ -561,8 +572,17 @@ export function createMoneroIndexer(config: MoneroIndexerConfig): MoneroIndexer 
 		);
 		const firstTxHash = transfers[0]?.txid ?? null;
 
+		const blockHeight = Number.isFinite(firstHeight) ? firstHeight : walletHeight;
+
 		if (minConfirmations < requiredConfirmations) {
-			return false;
+			return await announceProgress(record, {
+				paymentId,
+				expectedAtomic,
+				receivedAtomic,
+				confirmations: minConfirmations,
+				txHash: firstTxHash,
+				blockHeight,
+			});
 		}
 
 		const status: MoneroWebhookPayload['status'] =
@@ -583,7 +603,8 @@ export function createMoneroIndexer(config: MoneroIndexerConfig): MoneroIndexer 
 			expectedAmountXmr: atomicToXmr(expectedAtomic),
 			receivedAmountXmr: atomicToXmr(receivedAtomic),
 			confirmations: minConfirmations,
-			blockHeight: Number.isFinite(firstHeight) ? firstHeight : walletHeight,
+			requiredConfirmations,
+			blockHeight,
 			timestamp: now(),
 		});
 
@@ -596,6 +617,66 @@ export function createMoneroIndexer(config: MoneroIndexerConfig): MoneroIndexer 
 				txHash: firstTxHash,
 				receivedAtomic: receivedAtomic.toString(),
 				confirmations: minConfirmations,
+			},
+			timestamp: now(),
+			createdAt: record.createdAt,
+			updatedAt: now(),
+		});
+
+		return true;
+	}
+
+	/**
+	 * Report a payment that is on the chain but not yet settled, so a buyer
+	 * watching a checkout sees a confirmation count climb instead of an
+	 * unexplained wait. The payment stays `pending` throughout: this announces
+	 * progress, it never decides an outcome.
+	 *
+	 * Sends only when the count actually moved. The last announced count lives
+	 * on the record, so a sweep that finds nothing new posts nothing, and an
+	 * indexer catching up after downtime sends one webhook rather than one per
+	 * block it missed.
+	 */
+	async function announceProgress(
+		record: PaymentRecord,
+		observed: {
+			paymentId: string;
+			expectedAtomic: bigint;
+			receivedAtomic: bigint;
+			confirmations: number;
+			txHash: string | null;
+			blockHeight: number;
+		},
+	): Promise<boolean> {
+		const confirmations = Number.isFinite(observed.confirmations) ? observed.confirmations : 0;
+		const announced = readNumberMetadata(record, 'confirmations');
+		if (announced !== null && confirmations <= announced) return false;
+
+		await emitWebhook({
+			provider: 'monero',
+			paymentId: observed.paymentId,
+			status: 'pending',
+			txHash: observed.txHash,
+			address: readStringMetadata(record, 'address'),
+			invoiceCurrency: record.currency,
+			invoiceAmount: record.amount,
+			expectedAmountAtomic: observed.expectedAtomic.toString(),
+			receivedAmountAtomic: observed.receivedAtomic.toString(),
+			expectedAmountXmr: atomicToXmr(observed.expectedAtomic),
+			receivedAmountXmr: atomicToXmr(observed.receivedAtomic),
+			confirmations,
+			requiredConfirmations,
+			blockHeight: observed.blockHeight,
+			timestamp: now(),
+		});
+
+		await config.store.upsert({
+			...record,
+			metadata: {
+				...record.metadata,
+				txHash: observed.txHash,
+				receivedAtomic: observed.receivedAtomic.toString(),
+				confirmations,
 			},
 			timestamp: now(),
 			createdAt: record.createdAt,
@@ -894,6 +975,9 @@ function toPaymentResult(payload: MoneroWebhookPayload): WebhookEvent {
 			address: payload.address,
 			txHash: payload.txHash,
 			confirmations: payload.confirmations,
+			...(payload.requiredConfirmations === undefined
+				? {}
+				: { requiredConfirmations: payload.requiredConfirmations }),
 			blockHeight: payload.blockHeight,
 			expectedAmountXmr: payload.expectedAmountXmr,
 			receivedAmountXmr: payload.receivedAmountXmr,

@@ -516,16 +516,24 @@ describe('createMoneroIndexer', () => {
 		expect(updated?.status).toBe('success');
 	});
 
-	it('tick(): leaves an under-confirmed payment alone', async () => {
-		const ctx = await setupTwoPayments();
-		const fetcher = withWalletHandlers(ctx.indexerFetcher, {
-			get_height: () => ({ height: 3_000_005 }),
+	/**
+	 * An under-confirmed payment used to be met with silence, which left the
+	 * buyer staring at a checkout with nothing to read. It now reports its
+	 * progress while staying `pending`, and reports again only when the count
+	 * actually moves.
+	 */
+	function underConfirmedFetcher(
+		ctx: Awaited<ReturnType<typeof setupTwoPayments>>,
+		confirmations: () => number,
+	): typeof fetch {
+		return withWalletHandlers(ctx.indexerFetcher, {
+			get_height: () => ({ height: 3_000_000 + confirmations() }),
 			get_transfers: () => ({
 				in: [
 					{
 						txid: 'tx_abc',
 						amount: 100_000_000_000,
-						confirmations: 5,
+						confirmations: confirmations(),
 						height: 3_000_000,
 						subaddr_index: { major: 0, minor: 0 },
 					},
@@ -538,8 +546,13 @@ describe('createMoneroIndexer', () => {
 				],
 			}),
 		});
+	}
 
-		const indexer = createMoneroIndexer({
+	function underConfirmedIndexer(
+		ctx: Awaited<ReturnType<typeof setupTwoPayments>>,
+		fetcher: typeof fetch,
+	) {
+		return createMoneroIndexer({
 			walletRpcUrl: WALLET_URL,
 			store: ctx.store,
 			webhookUrl: WEBHOOK_URL,
@@ -547,12 +560,87 @@ describe('createMoneroIndexer', () => {
 			requiredConfirmations: 10,
 			fetcher,
 		});
+	}
+
+	it('tick(): reports an under-confirmed payment without settling it', async () => {
+		const ctx = await setupTwoPayments();
+		const indexer = underConfirmedIndexer(
+			ctx,
+			underConfirmedFetcher(ctx, () => 5),
+		);
 
 		const result = await indexer.tick();
-		expect(result.webhooksSent).toBe(0);
-		expect(ctx.webhookCalls).toHaveLength(0);
+
+		expect(result.webhooksSent).toBe(1);
+		const payload = JSON.parse(ctx.webhookCalls[0].body) as MoneroWebhookPayload;
+		expect(payload.status).toBe('pending');
+		expect(payload.confirmations).toBe(5);
 		const record = await ctx.store.get(ctx.payment1.paymentId);
 		expect(record?.status).toBe('pending');
+	});
+
+	it('tick(): tells the buyer how many confirmations are needed', async () => {
+		const ctx = await setupTwoPayments();
+		const indexer = underConfirmedIndexer(
+			ctx,
+			underConfirmedFetcher(ctx, () => 5),
+		);
+
+		await indexer.tick();
+
+		const payload = JSON.parse(ctx.webhookCalls[0].body) as MoneroWebhookPayload;
+		expect(payload.requiredConfirmations).toBe(10);
+	});
+
+	it('tick(): says nothing on a sweep where the count has not moved', async () => {
+		const ctx = await setupTwoPayments();
+		const indexer = underConfirmedIndexer(
+			ctx,
+			underConfirmedFetcher(ctx, () => 5),
+		);
+		await indexer.tick();
+
+		const second = await indexer.tick();
+
+		expect(second.webhooksSent).toBe(0);
+		expect(ctx.webhookCalls).toHaveLength(1);
+	});
+
+	it('tick(): reports again once the count climbs', async () => {
+		const ctx = await setupTwoPayments();
+		let confirmations = 5;
+		const indexer = underConfirmedIndexer(
+			ctx,
+			underConfirmedFetcher(ctx, () => confirmations),
+		);
+		await indexer.tick();
+
+		confirmations = 8;
+		await indexer.tick();
+
+		expect(ctx.webhookCalls).toHaveLength(2);
+		const payload = JSON.parse(ctx.webhookCalls[1].body) as MoneroWebhookPayload;
+		expect(payload.confirmations).toBe(8);
+		expect(payload.status).toBe('pending');
+	});
+
+	it('tick(): still settles the payment once it reaches the threshold', async () => {
+		const ctx = await setupTwoPayments();
+		let confirmations = 5;
+		const indexer = underConfirmedIndexer(
+			ctx,
+			underConfirmedFetcher(ctx, () => confirmations),
+		);
+		await indexer.tick();
+
+		confirmations = 10;
+		await indexer.tick();
+
+		const record = await ctx.store.get(ctx.payment1.paymentId);
+		expect(record?.status).toBe('success');
+		const payload = JSON.parse(ctx.webhookCalls.at(-1)!.body) as MoneroWebhookPayload;
+		expect(payload.status).toBe('success');
+		expect(payload.requiredConfirmations).toBe(10);
 	});
 
 	it('tick(): marks an underpaid confirmed payment as partial', async () => {
