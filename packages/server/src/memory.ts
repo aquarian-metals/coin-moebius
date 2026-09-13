@@ -8,8 +8,9 @@ import type { PaymentRecord, PaymentStore } from './types.js';
  *
  * For production, implement {@link PaymentStore} against your own backing
  * store (Postgres, SQLite/D1, Redis, DynamoDB, whatever fits). The interface
- * is intentionally small: one `upsert`, one `get`. See `PaymentStore` for
- * the contract.
+ * is intentionally small: one `upsert`, one `get`, plus the optional
+ * `markStatusAnnounced` and `listPending`. See `PaymentStore` for the
+ * contract.
  *
  * @example
  *   import { createMemoryStore, createStatusSubscriber } from '@aquarian-metals/coin-moebius-server';
@@ -55,6 +56,13 @@ export function createMemoryStore(): PaymentStore {
 			if (announced.has(key)) return Promise.resolve(false);
 			announced.add(key);
 			return Promise.resolve(true);
+		},
+		listPending(provider: string) {
+			const pending: PaymentRecord[] = [];
+			for (const record of records.values()) {
+				if (record.status === 'pending' && record.provider === provider) pending.push(record);
+			}
+			return Promise.resolve(pending);
 		},
 	};
 }

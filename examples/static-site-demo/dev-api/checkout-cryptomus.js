@@ -6,7 +6,7 @@
  *   - `CRYPTOMUS_MERCHANT_UUID`
  *   - `CRYPTOMUS_PAYMENT_API_KEY`
  *   - `CRYPTOMUS_CALLBACK_URL` (publicly reachable URL for Cryptomus's webhook;
- *     for local dev expose `/api/payment-webhook` via ngrok or cloudflared)
+ *     for local dev expose `/api/payment-webhook/cryptomus` via ngrok or cloudflared)
  *   - `CRYPTOMUS_RETURN_URL` (where the buyer lands after paying;
  *     defaults to `http://localhost:5173/?status=success`)
  */

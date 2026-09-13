@@ -170,6 +170,20 @@ See `packages/providers/monero/README.md` for the full self-hosting walkthrough 
 
 No action required if you're not running the Monero indexer in HA mode.
 
+### 9. New: self-hosted Zano provider (additive)
+
+The new `@aquarian-metals/coin-moebius-zano` package is purely additive. No existing integration changes. If you want it:
+
+```bash
+npm install @aquarian-metals/coin-moebius-zano
+```
+
+See `docs/self-hosted-zano.md` for the self-hosting walkthrough (node, watch-only wallet in RPC mode with JWT auth, the indexer, Freedom Dollar) and `examples/static-site-demo/zano/` for copy-paste serverless functions, an indexer, a systemd unit, and a docker-compose recipe.
+
+### 10. New optional `PaymentStore.listPending` (non-breaking)
+
+`@aquarian-metals/coin-moebius-server` now exposes an **optional** `listPending(provider)` method on the `PaymentStore` interface. Existing store implementations satisfy the interface without changes. The Zano indexer uses it, when present, to expire unpaid invoices; without it, paid Zano invoices still settle and unpaid ones stay `pending`. `createMemoryStore` implements it. Implement it on your production store if you run the Zano indexer.
+
 ### 8. Subscription support (additive)
 
 Each provider's `verify()` now returns a `WebhookEvent` discriminated union instead of a bare `PaymentResult`. The `kind: 'payment'` variant is structurally identical to the old `PaymentResult` shape with an added `kind` discriminator, so most consumers keep working with no change.

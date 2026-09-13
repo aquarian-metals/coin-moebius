@@ -20,7 +20,8 @@ let stop = null;
 
 function buildIndexer() {
 	const hmacSecret = getMoneroHmacSecret();
-	const webhookUrl = process.env.MONERO_WEBHOOK_URL ?? 'http://localhost:5173/api/payment-webhook';
+	const webhookUrl =
+		process.env.MONERO_WEBHOOK_URL ?? 'http://localhost:5173/api/payment-webhook/monero';
 
 	const fetcher = isMoneroMockEnabled() ? makeMockFetcher() : globalThis.fetch.bind(globalThis);
 

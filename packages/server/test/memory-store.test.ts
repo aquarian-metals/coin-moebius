@@ -90,6 +90,23 @@ describe('createMemoryStore', () => {
 		expect(await b.get('pi_1')).toBeNull();
 	});
 
+	describe('listPending', () => {
+		it('returns only pending records for the named provider', async () => {
+			const store = createMemoryStore();
+			await store.upsert(makeRecord({ paymentId: 'zano_1', provider: 'zano', status: 'pending' }));
+			await store.upsert(makeRecord({ paymentId: 'zano_2', provider: 'zano', status: 'success' }));
+			await store.upsert(makeRecord({ paymentId: 'xmr_1', provider: 'monero', status: 'pending' }));
+
+			const pending = await store.listPending?.('zano');
+			expect(pending?.map((r) => r.paymentId)).toEqual(['zano_1']);
+		});
+
+		it('returns an empty list when nothing is open', async () => {
+			const store = createMemoryStore();
+			expect(await store.listPending?.('zano')).toEqual([]);
+		});
+	});
+
 	describe('markStatusAnnounced', () => {
 		it('returns true the first time and false on every subsequent claim', async () => {
 			const store = createMemoryStore();

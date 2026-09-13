@@ -1,0 +1,73 @@
+# Docker compose bundle for self-hosted Zano with Coin Moebius.
+#
+# Disclaimer: this file is a starting point, not a maintained artifact.
+# Zano publishes no official image. Build one from the community
+# Dockerfile first (it compiles zanod and simplewallet from source):
+#
+#   git clone https://github.com/canardleteer/zano-docker
+#   cd zano-docker && docker build -t zano-runner .
+#
+# You are responsible for rebuilding it when Zano ships a release or a
+# security fix. Coin Moebius does not publish or maintain a turnkey image.
+#
+# Before first boot:
+#   1. Create a Zano wallet on a separate (cold) box.
+#   2. In its console: save_watch_only shop-watch.wallet <password>
+#   3. Put shop-watch.wallet into ./wallet-data/
+#   4. Fill in the .env values referenced below.
+#   5. docker compose up -d
+#   6. Watch logs: docker compose logs -f indexer
+#
+# The chain volume is 20+ GB once synced. Plan accordingly.
+
+services:
+  zanod:
+    image: zano-runner:latest
+    container_name: zanod
+    restart: unless-stopped
+    tty: true
+    volumes:
+      - ./zano-data:/home/ubuntu/.Zano
+    ports:
+      - "11121:11121" # P2P
+    command:
+      - zanod
+      - --rpc-bind-ip=0.0.0.0
+      - --rpc-bind-port=11211
+      - --no-console
+      - --disable-upnp
+
+  zano-wallet:
+    image: zano-runner:latest
+    container_name: zano-wallet
+    restart: unless-stopped
+    depends_on:
+      - zanod
+    volumes:
+      - ./wallet-data:/wallet
+    command:
+      - simplewallet
+      - --wallet-file=/wallet/shop-watch.wallet
+      - --password=${ZANO_WALLET_PASSWORD:?ZANO_WALLET_PASSWORD must be set in .env}
+      - --daemon-address=zanod:11211
+      - --rpc-bind-ip=0.0.0.0
+      - --rpc-bind-port=11212
+      - --jwt-secret=${ZANO_WALLET_JWT_SECRET:?ZANO_WALLET_JWT_SECRET must be set in .env}
+
+  indexer:
+    image: node:lts-alpine
+    container_name: zano-indexer
+    restart: unless-stopped
+    depends_on:
+      - zano-wallet
+    working_dir: /app
+    volumes:
+      - ./:/app
+    command: sh -c "npm install --no-save @aquarian-metals/coin-moebius-zano @aquarian-metals/coin-moebius-server && node indexer.js"
+    environment:
+      ZANO_WALLET_RPC_URL: http://zano-wallet:11212
+      ZANO_WALLET_JWT_SECRET: ${ZANO_WALLET_JWT_SECRET:?ZANO_WALLET_JWT_SECRET must be set in .env}
+      ZANO_WEBHOOK_URL: ${ZANO_WEBHOOK_URL:?ZANO_WEBHOOK_URL must be set in .env}
+      ZANO_HMAC_SECRET: ${ZANO_HMAC_SECRET:?ZANO_HMAC_SECRET must be set in .env}
+      ZANO_REQUIRED_CONFIRMATIONS: 10
+      ZANO_POLL_INTERVAL_MS: 30000

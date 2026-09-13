@@ -36,6 +36,7 @@ Every provider is its own package. Install only what you need. Each package ship
 | NOWPayments          | `@aquarian-metals/coin-moebius-nowpayments`       | Crypto (200+ coins, hosted invoice)                         |
 | Cryptomus            | `@aquarian-metals/coin-moebius-cryptomus`         | Crypto (geo-restricted in the US)                           |
 | Monero               | `@aquarian-metals/coin-moebius-monero`            | Crypto (self-hosted node, no third-party gateway)           |
+| Zano                 | `@aquarian-metals/coin-moebius-zano`              | Crypto (self-hosted node; ZANO and Freedom Dollar)          |
 | Manual / pay by mail | `@aquarian-metals/coin-moebius-manual`            | Off-rail confirmations (cash, check, Goldbacks, anything)   |
 
 Two foundation packages back them:
@@ -214,11 +215,11 @@ For delayed payments (like Monero block confirmations), the SDK handles the pend
 
 Gateway APIs change constantly. We maintain the core, Stripe, and Cryptomus reference implementations so you have a gold standard to copy.
 
-We expect the community to build the rest. Want to accept Solana, Lightning, or Zano?
+We expect the community to build the rest. Want to accept Solana or Lightning?
 
 1. Copy `packages/providers/template`.
 2. Write a frontend `initiate()` and a backend `server.ts` verifier.
-3. Publish it to npm as `@your-name/coin-moebius-zano`.
+3. Publish it to npm as `@your-name/coin-moebius-lightning`.
 
 ---
 
@@ -228,6 +229,7 @@ We expect the community to build the rest. Want to accept Solana, Lightning, or 
 - **[MIGRATION.md](./MIGRATION.md)** — recipe-format upgrade guide between SDK versions.
 - **[CHANGELOG.md](./CHANGELOG.md)** — the formal record of changes per release.
 - **[docs/integration-stripe.md](./docs/integration-stripe.md)** — end-to-end walkthrough for accepting Stripe payments, including Stripe Dashboard setup, environment variables, deployment notes, and common failure modes.
+- **[docs/self-hosted-zano.md](./docs/self-hosted-zano.md)** — self-hosting guide for taking ZANO and Freedom Dollar with no processor: node, watch-only wallet in RPC mode, JWT auth, the indexer, and how payments are matched.
 - **[docs/subscriptions.md](./docs/subscriptions.md)** — how the SDK handles recurring billing on fiat providers. Covers the five normalized event types, the pass-through model, and the `getStripePortalUrl` helper for cancellation.
 - **[docs/accessibility.md](./docs/accessibility.md)** — the `<coin-moebius-buy>` button's WCAG 2.1 AA support, what's shared with the site owner (custom color contrast, icon-only labels), and the formal conformance report (VPAT).
 - **API reference** — generated from TSDoc via `npm run docs` → `docs/api/index.html`.

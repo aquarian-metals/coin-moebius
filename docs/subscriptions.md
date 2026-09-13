@@ -4,14 +4,14 @@ The Coin Moebius SDK supports recurring billing on fiat providers that have thei
 
 ## What's supported
 
-| Provider                                          | Subscriptions in SDK                                 |
-| ------------------------------------------------- | ---------------------------------------------------- |
-| Stripe                                            | Yes (Phase 4.2, shipped)                             |
-| PayPal                                            | Coming soon (Phase 4.4)                              |
-| Square                                            | Coming soon (Phase 4.5)                              |
-| Authorize.net                                     | Coming soon (Phase 4.6)                              |
-| NOWPayments, Cryptomus, Monero, Coinbase Business | No. Crypto subscriptions are not on the roadmap.     |
-| Manual                                            | No. The reference-code flow is single-use by design. |
+| Provider                                                | Subscriptions in SDK                                 |
+| ------------------------------------------------------- | ---------------------------------------------------- |
+| Stripe                                                  | Yes (Phase 4.2, shipped)                             |
+| PayPal                                                  | Coming soon (Phase 4.4)                              |
+| Square                                                  | Coming soon (Phase 4.5)                              |
+| Authorize.net                                           | Coming soon (Phase 4.6)                              |
+| NOWPayments, Cryptomus, Monero, Zano, Coinbase Business | No. Crypto subscriptions are not on the roadmap.     |
+| Manual                                                  | No. The reference-code flow is single-use by design. |
 
 ## The pass-through model
 

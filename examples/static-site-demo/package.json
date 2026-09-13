@@ -12,6 +12,7 @@
 		"@aquarian-metals/coin-moebius-monero": "4.1.0",
 		"@aquarian-metals/coin-moebius-server": "4.1.0",
 		"@aquarian-metals/coin-moebius-stripe": "4.1.0",
+		"@aquarian-metals/coin-moebius-zano": "4.1.0",
 		"stripe": "^22.0.0"
 	},
 	"devDependencies": {

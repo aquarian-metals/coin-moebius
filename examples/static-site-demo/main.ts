@@ -2,9 +2,18 @@ import { createPaymentManager } from '@aquarian-metals/coin-moebius';
 import createCryptomusProvider from '@aquarian-metals/coin-moebius-cryptomus';
 import { createMoneroProvider } from '@aquarian-metals/coin-moebius-monero';
 import createStripeProvider from '@aquarian-metals/coin-moebius-stripe';
+import { createZanoProvider, FREEDOM_DOLLAR_ASSET_ID } from '@aquarian-metals/coin-moebius-zano';
+
+const ZANO_PROVIDER_IDS = new Set(['zano', 'fusd']);
 
 const payments = createPaymentManager({
-	providers: [createStripeProvider(), createCryptomusProvider(), createMoneroProvider()],
+	providers: [
+		createStripeProvider(),
+		createCryptomusProvider(),
+		createMoneroProvider(),
+		createZanoProvider(),
+		createZanoProvider({ id: 'fusd', name: 'Freedom Dollar', assetId: FREEDOM_DOLLAR_ASSET_ID }),
+	],
 });
 
 const statusEl = document.getElementById('status');
@@ -31,7 +40,12 @@ payments.onPending((result) => {
 		startStatusPolling(result.paymentId);
 		if (result.provider === 'monero') {
 			document.getElementById('mock-pay-btn')?.addEventListener('click', () => {
-				void simulateMockPayment(result.paymentId);
+				void simulateMockPayment(result.paymentId, '/api/mock/pay-monero');
+			});
+		}
+		if (ZANO_PROVIDER_IDS.has(result.provider)) {
+			document.getElementById('mock-pay-btn')?.addEventListener('click', () => {
+				void simulateMockPayment(result.paymentId, '/api/mock/pay-zano');
 			});
 		}
 	}
@@ -73,6 +87,26 @@ document.getElementById('monero-tile')?.addEventListener('click', () => {
 	});
 });
 
+document.getElementById('zano-tile')?.addEventListener('click', () => {
+	payments.initiate({
+		providerId: 'zano',
+		productId: 'jamstack-guide',
+		amount: 0.5,
+		currency: 'ZANO',
+		metadata: { email: 'buyer@example.com' },
+	});
+});
+
+document.getElementById('fusd-tile')?.addEventListener('click', () => {
+	payments.initiate({
+		providerId: 'fusd',
+		productId: 'jamstack-guide',
+		amount: 19.99,
+		currency: 'USD',
+		metadata: { email: 'buyer@example.com' },
+	});
+});
+
 function startStatusPolling(paymentId: string) {
 	payments.subscribeToStatus(
 		paymentId,
@@ -86,8 +120,8 @@ function startStatusPolling(paymentId: string) {
 	);
 }
 
-async function simulateMockPayment(paymentId: string) {
-	await fetch('/api/mock/pay-monero', {
+async function simulateMockPayment(paymentId: string, endpoint: string) {
+	await fetch(endpoint, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ paymentId }),
@@ -108,6 +142,17 @@ function renderPendingHtml(result: {
 			<div class="kv"><span>Send exactly</span><code>${xmrAmount} XMR</code></div>
 			<div class="kv"><span>To</span><code>${address}</code></div>
 			<div class="kv"><span>monero: URI</span><code>${uri}</code></div>
+			<button type="button" id="mock-pay-btn">Simulate buyer payment (mock mode)</button>`;
+	}
+	if (ZANO_PROVIDER_IDS.has(result.provider)) {
+		const address = readMetaString(result.metadata, 'address');
+		const assetAmount = readMetaString(result.metadata, 'assetAmount');
+		const ticker = readMetaString(result.metadata, 'ticker');
+		const uri = readMetaString(result.metadata, 'uri');
+		return `${header}
+			<div class="kv"><span>Send exactly</span><code>${assetAmount} ${ticker}</code></div>
+			<div class="kv"><span>To</span><code>${address}</code></div>
+			<div class="kv"><span>zano: link</span><code>${uri}</code></div>
 			<button type="button" id="mock-pay-btn">Simulate buyer payment (mock mode)</button>`;
 	}
 	const qr = result.metadata.qr;

@@ -1,18 +1,18 @@
 {
-	"name": "@aquarian-metals/coin-moebius",
+	"name": "@aquarian-metals/coin-moebius-zano",
 	"version": "4.1.0",
-	"description": "Headless payment router for static sites — friendly install name. Re-exports @aquarian-metals/coin-moebius-core.",
+	"description": "Self-hosted Zano provider for Coin Moebius — direct wallet-RPC integration for ZANO and Zano assets such as Freedom Dollar. No third-party gateway, no custodial keys. The merchant runs zanod + simplewallet and a small indexer; this package supplies the browser provider, the server-side creator (integrated addresses), the webhook verifier, and the indexer factory.",
 	"keywords": [
 		"payments",
-		"payment",
-		"stripe",
-		"monero",
 		"zano",
-		"cryptomus",
-		"jamstack",
-		"static-site",
+		"freedom-dollar",
+		"fusd",
+		"stablecoin",
+		"crypto",
+		"self-hosted",
+		"wallet-rpc",
 		"webhook",
-		"headless"
+		"coin-moebius"
 	],
 	"author": "aquarian-metals",
 	"license": "MIT",
@@ -23,7 +23,7 @@
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/aquarian-metals/coin-moebius.git",
-		"directory": "packages/coin-moebius"
+		"directory": "packages/providers/zano"
 	},
 	"type": "module",
 	"main": "./dist/index.js",
@@ -36,6 +36,10 @@
 		".": {
 			"types": "./dist/index.d.ts",
 			"import": "./dist/index.js"
+		},
+		"./server": {
+			"types": "./dist/server.d.ts",
+			"import": "./dist/server.js"
 		},
 		"./package.json": "./package.json"
 	},
@@ -51,6 +55,7 @@
 		"@aquarian-metals/coin-moebius-core": "^4.1.0"
 	},
 	"devDependencies": {
+		"@aquarian-metals/coin-moebius-server": "^4.1.0",
 		"typescript": "~5.8.0"
 	},
 	"publishConfig": {

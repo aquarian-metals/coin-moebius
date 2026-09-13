@@ -1,11 +1,13 @@
 /**
- * `POST /api/payment-webhook` — provider-agnostic webhook receiver.
+ * `POST /api/payment-webhook/:provider` — provider-agnostic webhook receiver.
  *
- * Dispatches to the shared verifier registry by inspecting the `x-provider`
- * header (or the `provider` field in the JSON body). On a verified payment
- * event, persists the normalized {@link PaymentResult} to the shared store
- * so `/api/payment-status` reads the latest state and the browser's
- * `subscribeToStatus` loop converges to `success`.
+ * Dispatches to the shared verifier registry by the provider named in the
+ * URL path, which is the trusted channel the registry asks for once more
+ * than one verifier is registered (it refuses to pick from the
+ * attacker-controllable `x-provider` header or `provider` body field). On a
+ * verified payment event, persists the normalized {@link PaymentResult} to
+ * the shared store so `/api/payment-status` reads the latest state and the
+ * browser's `subscribeToStatus` loop converges to `success`.
  *
  * Idempotent by design — re-delivering the same webhook just re-writes
  * the same record. The merchant's webhook receiver MUST be idempotent for
@@ -15,7 +17,14 @@
 import { createCryptomusVerifier } from '@aquarian-metals/coin-moebius-cryptomus/server';
 import { createMoneroVerifier } from '@aquarian-metals/coin-moebius-monero/server';
 import { createStripeVerifier } from '@aquarian-metals/coin-moebius-stripe/server';
-import { getMoneroHmacSecret, getRegistry, getStore, registerVerifierOnce } from './_shared.js';
+import { createZanoVerifier } from '@aquarian-metals/coin-moebius-zano/server';
+import {
+	getMoneroHmacSecret,
+	getRegistry,
+	getStore,
+	getZanoHmacSecret,
+	registerVerifierOnce,
+} from './_shared.js';
 
 function ensureVerifiersRegistered() {
 	if (process.env.STRIPE_WEBHOOK_SECRET) {
@@ -38,6 +47,10 @@ function ensureVerifiersRegistered() {
 		const v = createMoneroVerifier({ hmacSecret: getMoneroHmacSecret() });
 		return v.verify;
 	});
+	registerVerifierOnce('zano', () => {
+		const v = createZanoVerifier({ hmacSecret: getZanoHmacSecret() });
+		return v.verify;
+	});
 }
 
 export async function handlePaymentWebhook(req, res) {
@@ -57,7 +70,7 @@ export async function handlePaymentWebhook(req, res) {
 
 	try {
 		const stripeRaw = headers['stripe-signature'] ? rawText : parsed;
-		const result = await getRegistry().verify(stripeRaw, headers);
+		const result = await getRegistry().verify(stripeRaw, headers, providerFromPath(req.url));
 		if (!result) {
 			res.statusCode = 200;
 			res.end('event ignored');
@@ -82,6 +95,12 @@ export async function handlePaymentWebhook(req, res) {
 		res.statusCode = 400;
 		res.end(`verifier error: ${err instanceof Error ? err.message : String(err)}`);
 	}
+}
+
+function providerFromPath(url) {
+	const path = new URL(url ?? '', 'http://localhost').pathname;
+	const suffix = path.replace(/^\/api\/payment-webhook\/?/, '');
+	return suffix === '' ? undefined : suffix;
 }
 
 async function readText(req) {

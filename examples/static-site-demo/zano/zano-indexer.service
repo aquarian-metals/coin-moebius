@@ -1,0 +1,49 @@
+# systemd unit for the Coin Moebius Zano indexer.
+#
+# Install: copy to /etc/systemd/system/, edit the paths and env, then:
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now zano-indexer
+#   sudo journalctl -u zano-indexer -f
+#
+# Restart-on-failure handles the case where the wallet RPC is temporarily
+# unreachable on indexer startup; the indexer is catch-up by design, so
+# brief crashes don't lose payments.
+
+[Unit]
+Description=Coin Moebius Zano indexer
+After=network-online.target zano-wallet.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=zano
+Group=zano
+WorkingDirectory=/opt/coin-moebius
+ExecStart=/usr/bin/node /opt/coin-moebius/indexer.js
+Restart=on-failure
+RestartSec=5
+
+# Hardening: the indexer reads the wallet RPC and writes to outbound HTTPS
+# only. Lock everything else down.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log/coin-moebius
+
+# Env. Edit these. The two secrets belong in the EnvironmentFile, which
+# should be readable by the zano user only.
+Environment=ZANO_WALLET_RPC_URL=http://127.0.0.1:11212
+Environment=ZANO_WEBHOOK_URL=https://your-site.example/api/payment-webhook
+Environment=ZANO_REQUIRED_CONFIRMATIONS=10
+Environment=ZANO_POLL_INTERVAL_MS=30000
+EnvironmentFile=/etc/coin-moebius/zano-indexer.env
+
+# Stop sends SIGTERM; indexer.js handles it and clears the polling
+# interval. Give it a few seconds to drain.
+TimeoutStopSec=10
+KillMode=mixed
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target

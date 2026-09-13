@@ -45,3 +45,15 @@ export function isMoneroMockEnabled() {
 export function getMoneroHmacSecret() {
 	return process.env.MONERO_HMAC_SECRET ?? 'demo-hmac-secret-not-for-production';
 }
+
+export function isZanoMockEnabled() {
+	return process.env.ZANO_MOCK === 'true';
+}
+
+/**
+ * Shared HMAC secret used by the Zano verifier (receiver) and indexer
+ * (sender). Same fallback story as the Monero one above.
+ */
+export function getZanoHmacSecret() {
+	return process.env.ZANO_HMAC_SECRET ?? 'demo-zano-hmac-secret-not-for-production';
+}

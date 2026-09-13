@@ -13,6 +13,7 @@
 		"packages/providers/authorizenet",
 		"packages/providers/square",
 		"packages/providers/monero",
+		"packages/providers/zano",
 		"packages/providers/manual",
 		"packages/providers/makepay",
 		"packages/providers/template",

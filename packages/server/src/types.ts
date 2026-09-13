@@ -63,4 +63,18 @@ export interface PaymentStore {
 	 * you plan to run the Monero indexer in HA / multi-replica mode.
 	 */
 	markStatusAnnounced?(paymentId: string, status: PaymentStatus): Promise<boolean>;
+
+	/**
+	 * Optional. Return every record still `pending` for `provider`.
+	 *
+	 * The Zano indexer uses this to expire unpaid invoices. A Zano wallet
+	 * keeps no record of the payment ids it hands out, so the store is the
+	 * only list of open invoices. Stores that omit this method still
+	 * settle every paid Zano invoice; an invoice nobody pays simply stays
+	 * `pending` instead of being announced `failed` at `expiresAt`.
+	 *
+	 * The Monero indexer does not need it: Monero's wallet labels each
+	 * subaddress it mints, so the wallet itself lists the open invoices.
+	 */
+	listPending?(provider: string): Promise<PaymentRecord[]>;
 }
