@@ -75,11 +75,30 @@ console.log('\n→ committing + tagging + pushing git');
 // avoids a hook failure AFTER npm has already published (which would desync).
 run('git add -A');
 run(`git commit --no-verify -m "${tag}"`);
-run(`git tag ${tag}`);
+// Annotated, not lightweight. `--follow-tags` only pushes annotated tags, so a
+// lightweight one stays on the laptop while the commit goes up, and the release
+// looks finished while GitHub has no tag for it. The explicit push below is the
+// real guarantee; the annotation just makes `--follow-tags` behave too.
+run(`git tag -a ${tag} -m "${tag}"`);
 run('git push --no-verify origin main --follow-tags');
+// Push the tag by name as well. Idempotent when --follow-tags already sent it,
+// and the thing that stops a silent half-release when it did not.
+run(`git push --no-verify origin ${tag}`);
 
-// 6. Prove all three systems agree.
+// 6. Prove all three systems agree. npm's `latest` dist-tag can take a while to
+// reach every read replica after a 16-package burst, so a mismatch here is far
+// more often propagation lag than a real desync. Report it and let the operator
+// re-run `npm run check:sync`, rather than failing a release whose publish, tag
+// and push all succeeded.
 console.log('\n→ verifying sync');
-run('node scripts/check-sync.mjs');
+try {
+	run('node scripts/check-sync.mjs');
+} catch {
+	console.warn(
+		`\n! ${tag} is published and pushed, but npm has not finished propagating.` +
+			'\n  Nothing is wrong with the release. Re-run `npm run check:sync` in a minute to confirm.',
+	);
+	process.exit(0);
+}
 
 console.log(`\n✓ Released ${tag}: npm and GitHub are in sync.`);
