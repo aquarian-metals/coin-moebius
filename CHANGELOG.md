@@ -9,6 +9,14 @@ caret range like `^4.2.0` rolls the whole family forward together.
 
 ## [Unreleased]
 
+## [4.2.3] — 2026-09-14
+
+### Changed
+
+- **A Zano quote is rounded up to six decimal places.** ZANO carries twelve, so an exact conversion reached the buyer as `1.62074554295` for a ten dollar order. Nobody can check or retype that, and the trailing digits are false precision on a rate that moves while they read it. Quotes now stop at six places, or at the asset's own precision when that is coarser, so Freedom Dollar's four are untouched.
+
+  Rounding is always **up**. Down would leave the merchant a fraction short on every order, and a buyer sending the displayed figure would land on `partial`. Up costs a rounding error far below a cent. The atomic amount, the wallet link, and the settlement check all use the rounded figure, so the number shown is exactly the number that settles.
+
 ## [4.2.2] — 2026-09-14
 
 ### Fixed

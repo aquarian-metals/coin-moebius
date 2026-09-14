@@ -293,7 +293,8 @@ export function createZanoCreator(config: ZanoCreatorConfig) {
 
 	return async function createZanoPayment(input: ZanoCreateInput): Promise<ZanoCreateResult> {
 		const asset = await resolveAsset(rpc, input.assetId);
-		const quoted = await invoiceToAsset(input.currency, input.amount, asset, config.rate);
+		const rawQuote = await invoiceToAsset(input.currency, input.amount, asset, config.rate);
+		const quoted = roundQuoteUp(rawQuote, asset.decimalPoint);
 		// The atomic integer is the invoice. `toAtomic` rounds any fraction
 		// finer than the asset carries upward, so the quote and the requirement
 		// differ whenever a rate does not land cleanly on the asset's decimals.
@@ -945,6 +946,30 @@ export async function zanoAccessToken(
 	const payload = base64Std(new TextEncoder().encode(JSON.stringify(claims)));
 	const signature = base64Std(new Uint8Array(await hmacSha256(jwtSecret, `${header}.${payload}`)));
 	return `${header}.${payload}.${signature}`;
+}
+
+/**
+ * How many decimal places a quote is allowed to show a buyer.
+ *
+ * ZANO carries twelve, which makes an exact conversion unreadable: $10 at
+ * $6.17 is 1.62074554295, and nobody can check or retype that. The trailing
+ * digits are false precision anyway, since the rate moves while they read it.
+ */
+const QUOTE_DECIMALS = 6;
+
+/**
+ * Round a quote up to something a person can read.
+ *
+ * Up, never down: rounding down would leave the merchant a fraction short on
+ * every order, and a buyer who sends the displayed figure would land on
+ * `partial`. Up costs the buyer a rounding error far below a cent and keeps the
+ * displayed number payable. An asset finer than {@link QUOTE_DECIMALS} is
+ * rounded to that; one that is coarser (Freedom Dollar's four) is untouched,
+ * because its own precision is already readable.
+ */
+export function roundQuoteUp(amount: number, decimalPoint: number): number {
+	const places = Math.min(QUOTE_DECIMALS, decimalPoint);
+	return Number(formatAtomic(BigInt(toAtomic(amount, places)), places));
 }
 
 /**

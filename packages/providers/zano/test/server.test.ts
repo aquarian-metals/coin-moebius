@@ -11,6 +11,7 @@ import {
 	toAtomic,
 	fromAtomic,
 	formatAtomic,
+	roundQuoteUp,
 	FREEDOM_DOLLAR_ASSET_ID,
 	ZANO_ASSET_ID,
 	type ZanoWebhookPayload,
@@ -1405,5 +1406,56 @@ describe('the access token is standard base64, which is what the wallet decodes'
 			exp: number;
 		};
 		expect(claims.exp).toBe(Math.floor(WEBHOOK_TS / 1000) + 60);
+	});
+});
+
+/**
+ * ZANO carries twelve decimals, so an exact conversion is unreadable: $10 at
+ * $6.17 came out as 1.62074554295. A buyer cannot check or retype that, and the
+ * trailing digits are false precision on a rate that moves while they read it.
+ */
+describe('a quote is rounded to something a buyer can read', () => {
+	it('cuts a twelve-decimal coin down to six', () => {
+		expect(roundQuoteUp(1.6207455429497568, 12)).toBe(1.620746);
+	});
+
+	it('leaves a coin that is already readable alone', () => {
+		// Freedom Dollar's four decimals are finer than nothing and coarser than
+		// six, so its own precision is the limit.
+		expect(roundQuoteUp(10, 4)).toBe(10);
+		expect(roundQuoteUp(19.9909995, 4)).toBe(19.991);
+	});
+
+	it('always rounds up, so the merchant is never short', () => {
+		for (const [value, dp] of [
+			[1.6207455429497568, 12],
+			[0.0000001234, 12],
+			[19.99000001, 4],
+			[1 / 3, 12],
+			[1 / 7, 8],
+		] as [number, number][]) {
+			expect(roundQuoteUp(value, dp)).toBeGreaterThanOrEqual(value);
+		}
+	});
+
+	it('never shows more places than it promised', () => {
+		const places = (n: number) => (n.toString().split('.')[1] ?? '').length;
+		expect(places(roundQuoteUp(1 / 3, 12))).toBeLessThanOrEqual(6);
+		expect(places(roundQuoteUp(1 / 7, 12))).toBeLessThanOrEqual(6);
+		expect(places(roundQuoteUp(1 / 7, 4))).toBeLessThanOrEqual(4);
+	});
+
+	it('a minted invoice quotes the rounded figure, and its atomic matches', async () => {
+		const wallet = makeWallet();
+		const create = createZanoCreator({
+			walletRpcUrl: WALLET_URL,
+			store: createMemoryStore(),
+			fetcher: wallet.fetcher,
+			rate: async () => 1 / 6.17,
+		});
+		const invoice = await create({ productId: 'p1', amount: 10, currency: 'USD' });
+		expect(invoice.assetAmount).toBe(1.620746);
+		expect(invoice.atomicAmount).toBe(toAtomic(1.620746, 12));
+		expect(invoice.uri).toContain('amount=1.620746');
 	});
 });
