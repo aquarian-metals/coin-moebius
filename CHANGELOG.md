@@ -9,6 +9,25 @@ caret range like `^4.2.0` rolls the whole family forward together.
 
 ## [Unreleased]
 
+## [4.2.1] — 2026-09-14
+
+No code changes. Every package is identical to 4.2.0.
+
+This release exists to put the whole family back on one version number. During
+the 4.2.0 publish, npm accepted `@aquarian-metals/coin-moebius-nowpayments` and
+then stranded it in its own staging step: the version never appeared on the
+registry, and it can never be uploaded again, because npm refuses a second
+publish at a version it has already staged. That left fifteen packages at 4.2.0
+and one at 4.1.0.
+
+Nothing was broken for anyone installing. No package depends on the NOWPayments
+package, and its 4.1.0 remained installable throughout. What broke was the
+promise the release tooling makes, that one version number describes the whole
+family, so `npm run check:sync` had no true answer to give.
+
+If you are on 4.2.0, there is no reason to move except to keep that promise
+true. `4.2.0` of the NOWPayments package does not exist and never will.
+
 ## [4.2.0] — 2026-09-14
 
 ### Added
