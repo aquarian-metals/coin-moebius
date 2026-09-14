@@ -1,6 +1,6 @@
 {
 	"name": "@aquarian-metals/coin-moebius-stripe",
-	"version": "4.2.2",
+	"version": "4.2.3",
 	"description": "Stripe provider for Coin Moebius — browser checkout entry plus a server-only webhook verifier under the ./server subpath.",
 	"keywords": [
 		"payments",
@@ -47,7 +47,7 @@
 		"node": ">=18"
 	},
 	"dependencies": {
-		"@aquarian-metals/coin-moebius-core": "^4.2.2"
+		"@aquarian-metals/coin-moebius-core": "^4.2.3"
 	},
 	"peerDependencies": {
 		"stripe": "^22.0.0"
