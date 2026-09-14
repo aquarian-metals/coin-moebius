@@ -28,7 +28,14 @@
  */
 import type { PaymentProvider, InitiateOptions } from '@aquarian-metals/coin-moebius-core';
 
-export { ZANO_ASSET_ID, FREEDOM_DOLLAR_ASSET_ID, ZANO_NATIVE_ASSET } from './assets.js';
+import { formatAtomic } from './assets.js';
+
+export {
+	ZANO_ASSET_ID,
+	FREEDOM_DOLLAR_ASSET_ID,
+	ZANO_NATIVE_ASSET,
+	formatAtomic,
+} from './assets.js';
 export type { ZanoAsset } from './assets.js';
 
 /**
@@ -189,16 +196,23 @@ async function fetchInstructions(
 		throw new Error(`coin-moebius/zano: checkout endpoint responded ${response.status}`);
 	}
 	const payload = (await response.json()) as Partial<ZanoInstructions>;
+	// Check every field the modal renders, not just the ones it routes on. A
+	// missing number is not a blank on the screen, it is the word "undefined"
+	// where an amount should be, or "NaN minutes" on the expiry line, and the
+	// buyer has no way to tell that from a real instruction.
 	if (
 		typeof payload.paymentId !== 'string' ||
 		typeof payload.address !== 'string' ||
 		typeof payload.atomicAmount !== 'string' ||
 		typeof payload.assetId !== 'string' ||
 		typeof payload.ticker !== 'string' ||
-		typeof payload.uri !== 'string'
+		typeof payload.uri !== 'string' ||
+		!Number.isFinite(payload.assetAmount) ||
+		!Number.isInteger(payload.decimalPoint) ||
+		!Number.isFinite(payload.expiresAt)
 	) {
 		throw new Error(
-			'coin-moebius/zano: checkout response missing required fields (paymentId, address, atomicAmount, assetId, ticker, uri)',
+			'coin-moebius/zano: checkout response missing required fields (paymentId, address, atomicAmount, assetAmount, assetId, ticker, decimalPoint, uri, expiresAt)',
 		);
 	}
 	payload.uri = validateUri(payload.uri);
@@ -245,7 +259,10 @@ function defaultRenderModal(
 
 	const expiresIn = Math.max(0, Math.round((instructions.expiresAt - Date.now()) / 1000 / 60));
 	const ticker = escapeHtml(instructions.ticker);
-	const amount = `${instructions.assetAmount} ${ticker}`;
+	// Print the atomic integer, not the float beside it. The atomic value is
+	// what settles the invoice, and it is the only form that cannot show the
+	// buyer binary noise or exponent notation in place of a payable number.
+	const amount = `${escapeHtml(formatAtomic(BigInt(instructions.atomicAmount), instructions.decimalPoint))} ${ticker}`;
 
 	card.innerHTML = `
 		<h2 id="cm-zano-title" style="margin:0 0 8px;font-size:1.25rem;">Pay on Zano</h2>

@@ -123,7 +123,9 @@ export default async (req) => {
 
 Every checkout gets a fresh 8-byte payment id, folded into an **integrated address** by the merchant's own wallet (`make_integrated_address`). The buyer pastes one thing. When the payment lands, the wallet reports it under that payment id in `get_recent_txs_and_info3`, grouped by asset, so the indexer knows both **which order** and **which asset** without any bookkeeping of its own.
 
-Only money in the invoiced asset counts. ZANO sent to a Freedom Dollar invoice is reported on the webhook as `otherAssets` and never credited, because one Zano address takes every asset and a wallet that ignores the link's `asset_id` falls back to ZANO.
+Only money in the invoiced asset counts. ZANO sent to a Freedom Dollar invoice is never credited, because one Zano address takes every asset and a wallet that ignores the link's `asset_id` falls back to ZANO.
+
+Wrong-asset money on its own sends no webhook — the indexer logs a warning and the invoice stays open, since nothing has settled. It is named under `otherAssets` on the next webhook that invoice does send, so you see it once the invoiced asset arrives too. Watch the logger for `payment received in an asset that was not invoiced` if you want to know at the time.
 
 A payment settles at `requiredConfirmations` (default 10, which is what Zano's own integration guide asks for; blocks are a minute apart). While it gathers confirmations the indexer posts `status: 'pending'` webhooks with the count, once per change, so a checkout can show "3 of 10".
 

@@ -57,6 +57,13 @@ export function createMemoryStore(): PaymentStore {
 			announced.add(key);
 			return Promise.resolve(true);
 		},
+		unmarkStatusAnnounced(paymentId: string, status: PaymentStatus) {
+			// The inverse of the claim above. An indexer calls this when it won
+			// the claim but could not deliver, so the next tick tries again
+			// instead of leaving a real payment unannounced forever.
+			announced.delete(`${paymentId}\u0000${status}`);
+			return Promise.resolve();
+		},
 		listPending(provider: string) {
 			const pending: PaymentRecord[] = [];
 			for (const record of records.values()) {

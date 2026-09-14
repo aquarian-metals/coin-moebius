@@ -4,19 +4,48 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-While the version line stays in `0.1.0-beta.x`, all six packages move in lockstep
-and any release may break shape; pin a caret range like `^0.1.0-beta.1` so a
-single bump rolls the whole family forward.
+Every public package in this repo moves in lockstep on one version number, so a
+caret range like `^4.2.0` rolls the whole family forward together.
 
 ## [Unreleased]
+
+## [4.2.0] — 2026-09-14
 
 ### Added
 
 - **`@aquarian-metals/coin-moebius-zano`**, the self-hosted Zano provider. No third-party gateway, no custodial keys. The merchant runs `zanod` + `simplewallet` in RPC mode and a small indexer; the package supplies the browser provider, the server-side creator (an integrated address with a fresh 8-byte payment id per checkout), the webhook verifier, and the indexer factory (`.tick()`, `.start()`, `.status()`). Pays in ZANO or in any Zano asset the merchant accepts; Freedom Dollar ships as `FREEDOM_DOLLAR_ASSET_ID`, and an asset's decimals are read from the merchant's own wallet at checkout, never from a table. Money that arrives on a payment id in the wrong asset is reported on the webhook as `otherAssets` and never credited. Speaks the wallet's JWT auth (`jwtSecret` on the creator and indexer). Guide in `docs/self-hosted-zano.md`; copy-paste deployment in `examples/static-site-demo/zano/`; the static-site demo gains offline Zano and Freedom Dollar tiles behind `ZANO_MOCK=true`.
 - **Optional `PaymentStore.listPending(provider)`** in `@aquarian-metals/coin-moebius-server`. A Zano wallet keeps no record of the payment ids it hands out, so the store is the only list of open invoices; the Zano indexer uses this method, when present, to announce unpaid invoices `failed` at `expiresAt`. Existing stores keep satisfying the interface without changes. `createMemoryStore` implements it.
-
+- **Optional `PaymentStore.unmarkStatusAnnounced(paymentId, status)`** in `@aquarian-metals/coin-moebius-server`, the inverse of `markStatusAnnounced`. An indexer calls it when it won the claim to announce a payment but could not deliver the webhook, so the announcement is retried on the next tick instead of being lost. Optional, so existing stores are unaffected; a store that implements `markStatusAnnounced` should implement this one too. `createMemoryStore` implements it.
 - **Confirmation progress from the self-hosted Monero indexer.** The indexer used to compute a payment's confirmation count on every sweep and stay silent until that payment settled, which left a buyer watching a checkout with nothing to read. It now POSTs a `status: 'pending'` webhook while the payment gathers confirmations, and the payment record stays `pending` throughout: this announces progress, it never decides an outcome. Delivery is bounded by the count itself. The last announced count is stored on the record, so a sweep that finds nothing new posts nothing, and an indexer catching up after downtime sends one webhook rather than one per block it missed.
 - **`MoneroWebhookPayload.requiredConfirmations`.** The indexer now reports how many confirmations a payment needs alongside how many it has, so a checkout can show "3 of 10" instead of a bare count. Named to match the existing `requiredConfirmations` option on `MoneroIndexerConfig`. Optional on the wire, so a hand-written indexer built against an earlier version still compiles and still delivers; consumers should render a count with no target rather than assuming one is present.
+
+### Fixed
+
+- **A failed webhook no longer loses a real payment.** Both self-hosted indexers claim the right to announce a settlement before they deliver it, so that two indexers cannot announce the same thing twice. A delivery that then failed used to spend the claim anyway: the money was on the chain and confirmed, no later tick would retry, and the merchant was eventually told at expiry that nothing had arrived. A claim that is not delivered is now handed back, so the next tick tries again. Stores that implement `markStatusAnnounced` were the ones affected; stores without it already retried.
+- **The amount shown to a Zano buyer is now the amount that settles the invoice.** The quote came from the rate calculation while the invoice required that amount rounded up to the asset's smallest unit, so the modal could print more decimal places than the asset carries. A buyer whose wallet truncated those extra places, or who typed the number by hand, underpaid and got a partial. Every amount is now read back from the atomic value, and the modal prints it as an exact decimal string. Freedom Dollar felt this most, at four decimal places.
+- **A wallet reply carrying an awkward number no longer stops the Zano indexer.** Wallet replies are pre-scanned so 64-bit amounts survive `JSON.parse`. The scanner looked only at what followed a run of digits, so the tail of a long decimal, or the digits after a minus sign, were quoted mid-number and the result would not parse. Every wallet call goes through that scanner, so one such reply threw on every tick from then on and the indexer went quiet for good.
+- **The Zano checkout modal validates every field it renders.** `assetAmount`, `decimalPoint`, and `expiresAt` were used but never checked, so a checkout endpoint that omitted one showed the buyer the word `undefined` where the amount belongs, or `NaN minutes` on the expiry line.
+
+### Changed
+
+- **`MoneroWebhookPayload.status` accepts `'pending'`** in addition to the terminal `'success'`, `'partial'`, and `'failed'`. The verifier already passed the value straight through, so this widens a type rather than changing behavior. Consumers that switch on the status should handle `'pending'` as "on the chain, still settling" and keep polling; `createMoneroVerifier()` maps it to a `PaymentResult` carrying the invoice amount, with the observed confirmation count on `metadata.confirmations`.
+
+## [4.1.0] — 2026-06-18
+
+### Added
+
+- **`@aquarian-metals/coin-moebius-makepay`**, the MakePay provider. MakePay creates a hosted checkout link, the buyer pays on MakePay's page in any of 70+ coins, and the money settles straight to the merchant's own wallet — MakePay never holds it. A signed webhook reports the result back.
+- **`createDodoSubscriptionCheckout()`** in `@aquarian-metals/coin-moebius-dodopayments/server`. Opens a Dodo-hosted recurring checkout, so Dodo joins Stripe and PayPal as a rail where the buyer manages their own subscription in the provider's portal. Subscription-creation calls live in the provider package, never in the vendor-neutral core.
+
+## [4.0.1] — 2026-06-06
+
+### Fixed
+
+- Packaging and CI only: the lockfile is pinned to npm 11 so `npm ci` resolves vitest 4's nested `vite`/`esbuild` the same way local development does. No runtime change in any package.
+
+## [4.0.0] — 2026-06-06
+
+### Added
 
 - **Recurring-billing event support across the SDK.** New `SubscriptionEvent` interface and `SubscriptionEventType` union in `@aquarian-metals/coin-moebius-core` covering `subscription.created`, `subscription.renewed`, `subscription.payment_failed`, `subscription.canceled`, and `subscription.updated`. Provider verifiers now emit these events alongside one-time payment events, normalized through the same dispatch path. Stripe ships first; PayPal, Square, and Authorize.net follow.
 - **`WebhookEvent` discriminated union.** Every provider's `verify()` now returns `WebhookEvent | null` instead of `PaymentResult | null`. The union is `{ kind: 'payment' } & PaymentResult` or `{ kind: 'subscription' } & SubscriptionEvent`. Branch on `event.kind` to narrow, or use the new `asPayment(event)` / `asSubscription(event)` helpers.
@@ -30,7 +59,6 @@ single bump rolls the whole family forward.
 
 ### Changed
 
-- **`MoneroWebhookPayload.status` accepts `'pending'`** in addition to the terminal `'success'`, `'partial'`, and `'failed'`. The verifier already passed the value straight through, so this widens a type rather than changing behavior. Consumers that switch on the status should handle `'pending'` as "on the chain, still settling" and keep polling; `createMoneroVerifier()` maps it to a `PaymentResult` carrying the invoice amount, with the observed confirmation count on `metadata.confirmations`.
 - **`Verifier` return type widened to `Promise<WebhookEvent | null>`.** Existing consumers that read `result.status` directly need to add a discriminator check (`if (result.kind === 'payment') …`), or wrap the call with `asPayment()` for backwards-compatible narrowing. Runtime behavior for one-time payment flows is unchanged — payment events are now wrapped with `kind: 'payment'`, with no other shape changes. See `MIGRATION.md` section 8.
 - **`SubscriptionEvent.customerRef` carries the provider's customer id** (Stripe's `cus_…`, etc.) when the provider includes one on the event. The SDK does not store anything itself — it just passes what the provider sent. Consumers decide what to persist; the SDK doesn't impose a privacy posture.
 

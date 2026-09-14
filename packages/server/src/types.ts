@@ -65,6 +65,25 @@ export interface PaymentStore {
 	markStatusAnnounced?(paymentId: string, status: PaymentStatus): Promise<boolean>;
 
 	/**
+	 * Optional, and only meaningful alongside `markStatusAnnounced`. Give back
+	 * a claim that was won but never used, so the announcement can be retried.
+	 *
+	 * A claim is taken before the webhook goes out, because the point of the
+	 * claim is to stop two indexers announcing the same thing. But delivery can
+	 * fail after the claim is taken, and a claim that is spent on a webhook
+	 * nobody received is worse than a duplicate: the payment is real, the money
+	 * arrived, and no later tick will ever try again. Releasing the claim puts
+	 * the announcement back in play on the next tick.
+	 *
+	 * Implement it as the exact inverse of `markStatusAnnounced` — delete the
+	 * `(paymentId, status)` row or key. Calling it for a pair that was never
+	 * claimed must be harmless. A store that implements `markStatusAnnounced`
+	 * and omits this one trades a retry for a lost announcement, so implement
+	 * both or neither.
+	 */
+	unmarkStatusAnnounced?(paymentId: string, status: PaymentStatus): Promise<void>;
+
+	/**
 	 * Optional. Return every record still `pending` for `provider`.
 	 *
 	 * The Zano indexer uses this to expire unpaid invoices. A Zano wallet

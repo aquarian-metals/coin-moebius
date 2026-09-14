@@ -29,3 +29,19 @@ export const ZANO_NATIVE_ASSET: ZanoAsset = {
 export function isZanoAssetId(value: unknown): value is string {
 	return typeof value === 'string' && /^[0-9a-f]{64}$/.test(value);
 }
+
+/**
+ * Atomic units to an exact decimal string with no trailing zeros.
+ *
+ * This is the only honest way to write an amount for a buyer. The atomic
+ * integer is what the invoice actually requires; a float built from it can
+ * print binary noise or slide into exponent form, and a buyer who types what
+ * they read would then underpay. Lives beside the asset definitions because
+ * both the browser modal and the server creator have to print the same number.
+ */
+export function formatAtomic(atomic: bigint, decimalPoint: number): string {
+	const digits = atomic.toString().padStart(decimalPoint + 1, '0');
+	const whole = digits.slice(0, digits.length - decimalPoint);
+	const fraction = digits.slice(digits.length - decimalPoint).replace(/0+$/, '');
+	return fraction.length > 0 ? `${whole}.${fraction}` : whole;
+}

@@ -1,5 +1,13 @@
 # @aquarian-metals/coin-moebius-monero
 
+## 4.2.0
+
+### Minor Changes
+
+- **The indexer reports confirmation progress while a payment settles.** It used to count confirmations on every sweep and say nothing until the payment was final, which left a buyer watching a checkout with no sign that anything was happening. It now POSTs a `status: 'pending'` webhook as the count climbs, and the payment record stays `pending` the whole time: this announces progress, it never decides an outcome. The last announced count is stored, so a sweep that finds nothing new posts nothing, and an indexer catching up after downtime sends one webhook instead of one per missed block.
+- **`MoneroWebhookPayload.requiredConfirmations`** rides along with the count, so a checkout can show "3 of 10" instead of a bare number. Optional on the wire, so a hand-written indexer built against an earlier version still compiles and still delivers.
+- **`MoneroWebhookPayload.status` accepts `'pending'`** alongside the terminal `'success'`, `'partial'`, and `'failed'`. Handle it as "on the chain, still settling" and keep polling.
+
 ## 0.8.0
 
 ### Patch Changes

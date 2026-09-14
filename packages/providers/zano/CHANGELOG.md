@@ -1,6 +1,6 @@
 # @aquarian-metals/coin-moebius-zano
 
-## Unreleased
+## 4.2.0
 
 ### Minor Changes
 

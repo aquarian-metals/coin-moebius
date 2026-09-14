@@ -590,7 +590,7 @@ export function createMoneroIndexer(config: MoneroIndexerConfig): MoneroIndexer 
 		const winner = await claimAnnouncement(paymentId, status);
 		if (!winner) return false;
 
-		await emitWebhook({
+		await announce(paymentId, status, {
 			provider: 'monero',
 			paymentId,
 			status,
@@ -704,7 +704,7 @@ export function createMoneroIndexer(config: MoneroIndexerConfig): MoneroIndexer 
 			if (!winner) continue;
 
 			const expectedAtomic = readAtomicMetadata(record);
-			await emitWebhook({
+			await announce(paymentId, 'failed', {
 				provider: 'monero',
 				paymentId,
 				status: 'failed',
@@ -761,6 +761,30 @@ export function createMoneroIndexer(config: MoneroIndexerConfig): MoneroIndexer 
 		const fresh = await config.store.get(paymentId);
 		if (!fresh) return false;
 		return fresh.status === 'pending';
+	}
+
+	/**
+	 * Deliver an announcement the caller has already claimed, and hand the
+	 * claim back if delivery fails.
+	 *
+	 * The claim has to come first, or two indexers announce the same
+	 * settlement twice. But a claim spent on a webhook that never arrived is
+	 * the worse outcome by far: the money is real and on the chain, and no
+	 * later tick would try again, so the merchant would be told at expiry that
+	 * nothing ever came. Giving the claim back puts the announcement in play on
+	 * the next tick, and the delivery error still reaches the tick's error list.
+	 */
+	async function announce(
+		paymentId: string,
+		status: PaymentStatus,
+		payload: MoneroWebhookPayload,
+	): Promise<void> {
+		try {
+			await emitWebhook(payload);
+		} catch (err) {
+			await config.store.unmarkStatusAnnounced?.(paymentId, status);
+			throw err;
+		}
 	}
 
 	async function emitWebhook(payload: MoneroWebhookPayload): Promise<void> {

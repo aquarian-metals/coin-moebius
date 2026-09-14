@@ -253,7 +253,11 @@ Every kind of money on Zano has a long id like this. Names and tickers can be co
 
 You never have to tell the SDK how many decimal places a coin has. At checkout it asks your wallet, and the wallet answers from the chain. That same question is also what makes your wallet notice incoming Freedom Dollar. Any other coin on Zano works the same way: pass its id and nothing else changes.
 
-**If the buyer sends the wrong coin.** One Zano address accepts every kind of coin, and a wallet that ignores the link's coin choice sends ZANO by default. So a buyer can send ZANO to a Freedom Dollar order. The indexer never counts it toward the order. Instead, the "order paid" message names what arrived and how much, under `otherAssets`, and the order stays open until the right coin arrives. You know exactly what happened and can refund or reach out.
+**If the buyer sends the wrong coin.** One Zano address accepts every kind of coin, and a wallet that ignores the link's coin choice sends ZANO by default. So a buyer can send ZANO to a Freedom Dollar order. The indexer never counts it toward the order, and the order stays open.
+
+Read the next part carefully, because it decides whether you hear about it. Wrong-coin money on its own sends no message. The indexer writes a warning to your logger and waits, because from the chain's side nothing has happened to the order yet. What arrived is named on the **next** message that order does send, under `otherAssets`, which means you only see it once the right coin turns up as well. An order that only ever receives the wrong coin stays open and stays quiet.
+
+So watch your indexer's log for `payment received in an asset that was not invoiced`. That line is the only signal you get at the time, and it carries the payment id you need to refund or reach out.
 
 **Amounts.** Prices are rounded up to the coin's smallest unit, so you are never a fraction short.
 
@@ -282,7 +286,7 @@ The Zano desktop wallet opens it with the payment filled in. The Zano mobile wal
 | `asset … is not on the chain the wallet is connected to`                    | The node does not know that coin id. Wrong id, or the node is on Zano's test network.                                                         |
 | Payments sit at 0 confirmations for a long time                             | The wallet or the node has fallen behind. Compare the wallet's height with a public Zano explorer.                                            |
 | Freedom Dollar payments never show up                                       | The wallet was started with `--no-white-list` and never learned the coin. Remove that flag.                                                   |
-| The order is still waiting but the buyer says they paid                     | Look at the "order paid" messages for `otherAssets`. They probably sent ZANO to a Freedom Dollar order, or the other way round.               |
+| The order is still waiting but the buyer says they paid                     | Search your indexer's log for `an asset that was not invoiced`. They probably sent ZANO to a Freedom Dollar order, or the other way round.    |
 | Old unpaid orders never become "failed"                                     | Your database has no `listPending`. Add it, or accept that unpaid orders stay marked as waiting.                                              |
 | The wallet errors on new transactions                                       | The wallet is older than Zano's August 2026 update. Install a current release.                                                                |
 

@@ -35,9 +35,20 @@
 
 import type { PaymentStatus, WebhookEvent } from '@aquarian-metals/coin-moebius-core';
 import type { PaymentRecord, PaymentStore } from '@aquarian-metals/coin-moebius-server';
-import { ZANO_ASSET_ID, ZANO_NATIVE_ASSET, isZanoAssetId, type ZanoAsset } from './assets.js';
+import {
+	ZANO_ASSET_ID,
+	ZANO_NATIVE_ASSET,
+	formatAtomic,
+	isZanoAssetId,
+	type ZanoAsset,
+} from './assets.js';
 
-export { ZANO_ASSET_ID, FREEDOM_DOLLAR_ASSET_ID, ZANO_NATIVE_ASSET } from './assets.js';
+export {
+	ZANO_ASSET_ID,
+	FREEDOM_DOLLAR_ASSET_ID,
+	ZANO_NATIVE_ASSET,
+	formatAtomic,
+} from './assets.js';
 export type { ZanoAsset } from './assets.js';
 
 // ============================================================================
@@ -282,8 +293,16 @@ export function createZanoCreator(config: ZanoCreatorConfig) {
 
 	return async function createZanoPayment(input: ZanoCreateInput): Promise<ZanoCreateResult> {
 		const asset = await resolveAsset(rpc, input.assetId);
-		const assetAmount = await invoiceToAsset(input.currency, input.amount, asset, config.rate);
-		const atomicAmount = toAtomic(assetAmount, asset.decimalPoint);
+		const quoted = await invoiceToAsset(input.currency, input.amount, asset, config.rate);
+		// The atomic integer is the invoice. `toAtomic` rounds any fraction
+		// finer than the asset carries upward, so the quote and the requirement
+		// differ whenever a rate does not land cleanly on the asset's decimals.
+		// Every amount we hand out is read back from the atomic value, so the
+		// number the buyer is told to send is exactly the number that settles
+		// the invoice. Quoting the pre-rounding float here would ask the buyer
+		// for one atomic unit less than we then require, and pay them a partial.
+		const atomicAmount = toAtomic(quoted, asset.decimalPoint);
+		const assetAmount = fromAtomic(BigInt(atomicAmount), asset.decimalPoint);
 
 		const minted = await rpc<{ integrated_address?: unknown; payment_id?: unknown }>(
 			'make_integrated_address',
@@ -645,7 +664,7 @@ export function createZanoIndexer(config: ZanoIndexerConfig): ZanoIndexer {
 		const winner = await claimAnnouncement(paymentId, status);
 		if (!winner) return false;
 
-		await emitWebhook(payloadFor(observation, status));
+		await announce(paymentId, status, payloadFor(observation, status));
 
 		await config.store.upsert({
 			...record,
@@ -755,7 +774,7 @@ export function createZanoIndexer(config: ZanoIndexerConfig): ZanoIndexer {
 
 			const asset = readAssetMetadata(record);
 			const expectedAtomic = readBigIntMetadata(record, 'atomicAmount');
-			await emitWebhook({
+			await announce(record.paymentId, 'failed', {
 				provider: 'zano',
 				paymentId: record.paymentId,
 				status: 'failed',
@@ -801,6 +820,30 @@ export function createZanoIndexer(config: ZanoIndexerConfig): ZanoIndexer {
 		const fresh = await config.store.get(paymentId);
 		if (!fresh) return false;
 		return fresh.status === 'pending';
+	}
+
+	/**
+	 * Deliver an announcement the caller has already claimed, and hand the
+	 * claim back if delivery fails.
+	 *
+	 * The claim has to come first, or two indexers announce the same
+	 * settlement twice. But a claim spent on a webhook that never arrived is
+	 * the worse outcome by far: the money is real and on the chain, and no
+	 * later tick would try again, so the merchant would be told at expiry that
+	 * nothing ever came. Giving the claim back puts the announcement in play on
+	 * the next tick, and the delivery error still reaches the tick's error list.
+	 */
+	async function announce(
+		paymentId: string,
+		status: PaymentStatus,
+		payload: ZanoWebhookPayload,
+	): Promise<void> {
+		try {
+			await emitWebhook(payload);
+		} catch (err) {
+			await config.store.unmarkStatusAnnounced?.(paymentId, status);
+			throw err;
+		}
 	}
 
 	async function emitWebhook(payload: ZanoWebhookPayload): Promise<void> {
@@ -945,14 +988,6 @@ export function fromAtomic(atomic: bigint, decimalPoint: number): number {
 	return Number(atomic) / 10 ** decimalPoint;
 }
 
-/** Atomic units to an exact decimal string with no trailing zeros, for wallet links. */
-export function formatAtomic(atomic: bigint, decimalPoint: number): string {
-	const digits = atomic.toString().padStart(decimalPoint + 1, '0');
-	const whole = digits.slice(0, digits.length - decimalPoint);
-	const fraction = digits.slice(digits.length - decimalPoint).replace(/0+$/, '');
-	return fraction.length > 0 ? `${whole}.${fraction}` : whole;
-}
-
 // ============================================================================
 // Internals
 // ============================================================================
@@ -1029,6 +1064,13 @@ function walletRpcCaller(config: ZanoWalletRpcConfig): WalletRpc {
  * numbers. `JSON.parse` would round anything past 2^53 (about 9,007 ZANO in
  * atomic units), so integers of 16 or more digits are quoted before
  * parsing and read back through `BigInt`.
+ *
+ * A run of digits only counts as a whole number when nothing numeric sits on
+ * either side of it. The tail of a decimal (`1.2345678901234567`) and the
+ * digits after a sign or an exponent are part of a number already being
+ * written, and quoting them mid-literal produces text `JSON.parse` rejects —
+ * which would throw on every tick and stop the indexer for good. Amounts are
+ * unsigned, so a signed run is never an amount and is left to `JSON.parse`.
  */
 function parseJsonKeepingBigIntegers(text: string): unknown {
 	let out = '';
@@ -1058,8 +1100,11 @@ function parseJsonKeepingBigIntegers(text: string): unknown {
 			while (end < text.length && text[end] >= '0' && text[end] <= '9') end++;
 			const digits = text.slice(i, end);
 			const next = text[end];
-			const isWhole = next !== '.' && next !== 'e' && next !== 'E';
-			out += isWhole && digits.length >= 16 ? `"${digits}"` : digits;
+			const prev = out[out.length - 1];
+			const startsALiteral =
+				prev !== '.' && prev !== 'e' && prev !== 'E' && prev !== '-' && prev !== '+';
+			const endsALiteral = next !== '.' && next !== 'e' && next !== 'E';
+			out += startsALiteral && endsALiteral && digits.length >= 16 ? `"${digits}"` : digits;
 			i = end - 1;
 			continue;
 		}

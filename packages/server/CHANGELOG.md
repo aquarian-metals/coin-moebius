@@ -1,5 +1,11 @@
 # @aquarian-metals/coin-moebius-server
 
+## 4.2.0
+
+### Minor Changes
+
+- **Optional `PaymentStore.listPending(provider)`.** A Zano wallet keeps no record of the payment ids it hands out, so the store is the only list of open invoices. The Zano indexer calls this method, when the store has it, to mark unpaid invoices `failed` once they pass `expiresAt`. It is optional, so every existing store still satisfies the interface unchanged. `createMemoryStore` implements it.
+
 ## 0.8.0
 
 ### Patch Changes

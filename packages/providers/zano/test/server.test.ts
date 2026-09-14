@@ -1184,3 +1184,178 @@ describe('createZanoIndexer', () => {
 		).toThrow(/hmacSecret missing/);
 	});
 });
+
+/**
+ * Two money bugs found in review, held down here so they cannot come back.
+ *
+ * The first is a lost payment: the indexer claims the right to announce a
+ * settlement before it delivers the webhook, so a delivery that failed used to
+ * burn the claim and leave real, confirmed money unannounced forever.
+ *
+ * The second is a short payment: the amount shown to the buyer came from the
+ * pre-rounding quote while the invoice required the rounded-up atomic value, so
+ * a buyer who sent exactly what the modal said came up an atomic unit short.
+ */
+describe('announcement survives a failed webhook delivery', () => {
+	async function settleWith(respond: () => Response) {
+		const wallet = makeWallet();
+		const store = createMemoryStore();
+		const webhookCalls: { body: string; headers: Record<string, string> }[] = [];
+		const create = createZanoCreator({
+			walletRpcUrl: WALLET_URL,
+			store,
+			fetcher: wallet.fetcher,
+			rate: async () => 1,
+		});
+		const invoice = await create({ productId: 'p1', amount: 0.1, currency: 'ZANO' });
+		const indexer = createZanoIndexer({
+			walletRpcUrl: WALLET_URL,
+			store,
+			webhookUrl: WEBHOOK_URL,
+			hmacSecret: SECRET,
+			requiredConfirmations: 10,
+			fetcher: withWebhookCapture(wallet.fetcher, webhookCalls, respond),
+			logger: silentLogger(),
+			webhookRetry: { maxAttempts: 1, initialBackoffMs: 0 },
+		});
+		wallet.state.transfers.push({
+			tx_hash: txHash('tx1'),
+			height: wallet.state.height - 10,
+			subtransfers_by_pid: [
+				{
+					payment_id: invoice.paymentReference,
+					subtransfers: [{ amount: 100_000_000_000n, is_income: true }],
+				},
+			],
+		});
+		return { store, indexer, webhookCalls, invoice };
+	}
+
+	it('retries on the next tick after the endpoint refuses, and settles once it recovers', async () => {
+		let healthy = false;
+		const ctx = await settleWith(() =>
+			healthy ? new Response('', { status: 200 }) : new Response('', { status: 500 }),
+		);
+
+		const first = await ctx.indexer.tick();
+		expect(first.webhooksSent).toBe(0);
+		expect(first.errors).toHaveLength(1);
+		expect(ctx.webhookCalls).toHaveLength(0);
+		expect((await ctx.store.get(ctx.invoice.paymentId))!.status).toBe('pending');
+
+		healthy = true;
+		const second = await ctx.indexer.tick();
+		expect(second.webhooksSent).toBe(1);
+		expect(second.errors).toEqual([]);
+		const payload = JSON.parse(ctx.webhookCalls[0].body) as ZanoWebhookPayload;
+		expect(payload.status).toBe('success');
+		expect(payload.paymentId).toBe(ctx.invoice.paymentId);
+		expect((await ctx.store.get(ctx.invoice.paymentId))!.status).toBe('success');
+	});
+
+	it('still announces a settlement only once when delivery works', async () => {
+		const ctx = await settleWith(() => new Response('', { status: 200 }));
+		expect((await ctx.indexer.tick()).webhooksSent).toBe(1);
+		expect((await ctx.indexer.tick()).webhooksSent).toBe(0);
+		expect(ctx.webhookCalls).toHaveLength(1);
+	});
+});
+
+describe('the amount quoted to the buyer is the amount that settles', () => {
+	async function quote(amount: number, currency: string, rate: number, assetId?: string) {
+		const wallet = makeWallet();
+		const create = createZanoCreator({
+			walletRpcUrl: WALLET_URL,
+			store: createMemoryStore(),
+			fetcher: wallet.fetcher,
+			rate: async () => rate,
+		});
+		return await create({
+			productId: 'p1',
+			amount,
+			currency,
+			...(assetId === undefined ? {} : { assetId }),
+		});
+	}
+
+	it('quotes ZANO at a rate that does not land on 12 decimals', async () => {
+		// 19.99 USD at this rate needs rounding up past the 12th decimal.
+		const invoice = await quote(19.99, 'USD', 1 / 2.87);
+		expect(invoice.assetAmount).toBe(Number(formatAtomic(BigInt(invoice.atomicAmount), 12)));
+		expect(toAtomic(invoice.assetAmount, 12)).toBe(invoice.atomicAmount);
+	});
+
+	it('quotes Freedom Dollar, whose four decimals round far more often', async () => {
+		const invoice = await quote(19.99, 'USD', 1.00005, FREEDOM_DOLLAR_ASSET_ID);
+		expect(invoice.decimalPoint).toBe(4);
+		expect(invoice.assetAmount).toBe(Number(formatAtomic(BigInt(invoice.atomicAmount), 4)));
+		expect(toAtomic(invoice.assetAmount, 4)).toBe(invoice.atomicAmount);
+	});
+
+	it('never quotes less than the invoice requires, across a spread of awkward rates', async () => {
+		for (const rate of [1 / 3, 1 / 7, 0.123456789012345, 1.00005, 1 / 2.87]) {
+			const invoice = await quote(19.99, 'USD', rate);
+			expect(toAtomic(invoice.assetAmount, invoice.decimalPoint)).toBe(invoice.atomicAmount);
+		}
+	});
+
+	it('never shows more decimal places than the asset can carry', async () => {
+		// This is where the underpayment came from. A quote printed to more
+		// places than the asset holds gets truncated by the buyer's wallet, or
+		// by the buyer's own typing, and lands under the invoice.
+		const decimalsOf = (n: number) => (n.toString().split('.')[1] ?? '').length;
+
+		const zano = await quote(19.99, 'USD', 1 / 2.87);
+		expect(decimalsOf(zano.assetAmount)).toBeLessThanOrEqual(12);
+
+		const fusd = await quote(19.99, 'USD', 1.00005, FREEDOM_DOLLAR_ASSET_ID);
+		expect(decimalsOf(fusd.assetAmount)).toBeLessThanOrEqual(4);
+		expect(formatAtomic(BigInt(fusd.atomicAmount), 4)).toBe('19.991');
+	});
+});
+
+/**
+ * The wallet's replies are pre-scanned so 64-bit amounts survive JSON.parse.
+ * A scanner that mistakes the tail of a decimal for a whole number writes
+ * text JSON.parse rejects, and because every wallet call goes through it, the
+ * indexer would then throw on every tick and never recover on its own.
+ */
+describe('wallet replies containing awkward numbers still parse', () => {
+	function walletReturning(extra: string): typeof fetch {
+		return async () =>
+			new Response(
+				`{"id":0,"jsonrpc":"2.0","result":{"integrated_address":"iZTestIntegratedAddress","payment_id":"a1b2c3d4e5f60718",${extra}}}`,
+				{ status: 200, headers: { 'Content-Type': 'application/json' } },
+			);
+	}
+
+	async function mintWith(extra: string) {
+		const create = createZanoCreator({
+			walletRpcUrl: WALLET_URL,
+			store: createMemoryStore(),
+			fetcher: walletReturning(extra),
+			rate: async () => 1,
+		});
+		return await create({ productId: 'p1', amount: 0.1, currency: 'ZANO' });
+	}
+
+	it('a float whose fraction runs 16 digits or longer', async () => {
+		const invoice = await mintWith('"rate":1.2345678901234567');
+		expect(invoice.paymentReference).toBe('a1b2c3d4e5f60718');
+	});
+
+	it('a large negative integer', async () => {
+		const invoice = await mintWith('"offset":-1234567890123456');
+		expect(invoice.paymentReference).toBe('a1b2c3d4e5f60718');
+	});
+
+	it('a number in exponent form', async () => {
+		const invoice = await mintWith('"scaled":1.5e16');
+		expect(invoice.paymentReference).toBe('a1b2c3d4e5f60718');
+	});
+
+	it('still keeps a bare 64-bit amount exact', async () => {
+		const invoice = await mintWith('"balance":18446744073709551615');
+		expect(invoice.paymentReference).toBe('a1b2c3d4e5f60718');
+	});
+});
