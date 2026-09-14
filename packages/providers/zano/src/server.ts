@@ -936,14 +936,14 @@ export async function zanoAccessToken(
 	jwtSecret: string,
 	now: () => number = Date.now,
 ): Promise<string> {
-	const header = base64Url(new TextEncoder().encode(JSON.stringify({ alg: 'HS256', typ: 'JWT' })));
+	const header = base64Std(new TextEncoder().encode(JSON.stringify({ alg: 'HS256', typ: 'JWT' })));
 	const claims = {
 		body_hash: toHex(new Uint8Array(await crypto.subtle.digest('SHA-256', bytesOf(body)))),
 		salt: toHex(randomBytes(32)),
 		exp: Math.floor(now() / 1000) + 60,
 	};
-	const payload = base64Url(new TextEncoder().encode(JSON.stringify(claims)));
-	const signature = base64Url(new Uint8Array(await hmacSha256(jwtSecret, `${header}.${payload}`)));
+	const payload = base64Std(new TextEncoder().encode(JSON.stringify(claims)));
+	const signature = base64Std(new Uint8Array(await hmacSha256(jwtSecret, `${header}.${payload}`)));
 	return `${header}.${payload}.${signature}`;
 }
 
@@ -1319,10 +1319,19 @@ async function hmacSha256(secret: string, message: string): Promise<ArrayBuffer>
 	return crypto.subtle.sign('HMAC', key, bytesOf(message));
 }
 
-function base64Url(bytes: Uint8Array): string {
+/**
+ * Standard base64, padding and all.
+ *
+ * A JWT is normally base64url, and this used to be. Zano's wallet decodes the
+ * token with a plain base64 decoder, so the moment a token contained a `-` or
+ * a `_` the wallet answered 401 with `Invalid input: not within alphabet`, and
+ * every call failed. Verified against `simplewallet v2.2.1.506`: the same
+ * request signed this way returns 200, signed base64url returns 401.
+ */
+function base64Std(bytes: Uint8Array): string {
 	let binary = '';
 	for (const b of bytes) binary += String.fromCharCode(b);
-	return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+	return btoa(binary);
 }
 
 function headerValue(

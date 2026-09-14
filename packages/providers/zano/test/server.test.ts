@@ -207,12 +207,10 @@ describe('computeZanoSignature', () => {
 });
 
 describe('zanoAccessToken', () => {
+	// No alphabet repair and no padding repair: the token is standard base64,
+	// and a decoder that has to fix it up is the decoder that hid this bug.
 	function decodePart(part: string): unknown {
-		const padded = part
-			.replace(/-/g, '+')
-			.replace(/_/g, '/')
-			.padEnd(Math.ceil(part.length / 4) * 4, '=');
-		return JSON.parse(Buffer.from(padded, 'base64').toString('utf8'));
+		return JSON.parse(Buffer.from(part, 'base64').toString('utf8'));
 	}
 
 	it('is an HS256 JWT over the body hash, a fresh salt, and a one-minute expiry', async () => {
@@ -236,13 +234,10 @@ describe('zanoAccessToken', () => {
 			false,
 			['sign'],
 		);
+		// Standard base64, because that is what Zano's wallet decodes.
 		const expectedSig = Buffer.from(
 			await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`${header}.${payload}`)),
-		)
-			.toString('base64')
-			.replace(/\+/g, '-')
-			.replace(/\//g, '_')
-			.replace(/=+$/, '');
+		).toString('base64');
 		expect(signature).toBe(expectedSig);
 	});
 
@@ -548,12 +543,10 @@ describe('createZanoCreator', () => {
 
 		const call = wallet.state.calls[0];
 		const token = call.headers['Zano-Access-Token'];
-		expect(token).toMatch(/^[\w-]+\.[\w-]+\.[\w-]+$/);
-		const claims = JSON.parse(
-			Buffer.from(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString(
-				'utf8',
-			),
-		) as { body_hash: string };
+		expect(token).toMatch(/^[A-Za-z0-9+/]+={0,2}\.[A-Za-z0-9+/]+={0,2}\.[A-Za-z0-9+/]+={0,2}$/);
+		const claims = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString('utf8')) as {
+			body_hash: string;
+		};
 		expect(claims.body_hash).toBe(
 			Buffer.from(
 				await crypto.subtle.digest('SHA-256', new TextEncoder().encode(call.body)),
@@ -1357,5 +1350,60 @@ describe('wallet replies containing awkward numbers still parse', () => {
 	it('still keeps a bare 64-bit amount exact', async () => {
 		const invoice = await mintWith('"balance":18446744073709551615');
 		expect(invoice.paymentReference).toBe('a1b2c3d4e5f60718');
+	});
+});
+
+/**
+ * Zano's wallet decodes the access token with a plain base64 decoder, not a
+ * base64url one. We sent base64url, so the first token that happened to contain
+ * a `-` or a `_` came back 401 `Invalid input: not within alphabet`, and since
+ * 32 random signature bytes almost always produce one, that was every call.
+ * The rail could not talk to a wallet at all.
+ *
+ * The older test above normalizes both alphabets before decoding, so it passed
+ * either way and never caught this. These assert the wire format itself.
+ * Verified against simplewallet v2.2.1.506: standard base64 returns 200,
+ * base64url returns 401.
+ */
+describe('the access token is standard base64, which is what the wallet decodes', () => {
+	const STANDARD_BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
+
+	it('never emits a base64url character, across many random tokens', async () => {
+		for (let i = 0; i < 50; i++) {
+			const token = await zanoAccessToken('{"method":"getbalance"}', JWT_SECRET);
+			expect(token, `token ${i} carried a base64url character`).not.toMatch(/[-_]/);
+			for (const part of token.split('.')) {
+				expect(part, `token ${i} part is not standard base64`).toMatch(STANDARD_BASE64);
+			}
+		}
+	});
+
+	it('keeps the padding a strict decoder needs', async () => {
+		// Across 50 tokens some part will require padding; dropping it is the
+		// other half of the base64url convention and breaks the same decoder.
+		let sawPadding = false;
+		for (let i = 0; i < 50; i++) {
+			const token = await zanoAccessToken('{"method":"getbalance"}', JWT_SECRET);
+			if (token.includes('=')) sawPadding = true;
+			for (const part of token.split('.')) {
+				expect(part.length % 4, 'a base64 part must be a multiple of four').toBe(0);
+			}
+		}
+		expect(sawPadding, 'expected at least one padded part in 50 tokens').toBe(true);
+	});
+
+	it('still decodes to the claims the wallet expects', async () => {
+		const body = '{"jsonrpc":"2.0","id":"0","method":"getbalance","params":{}}';
+		const token = await zanoAccessToken(body, JWT_SECRET, () => WEBHOOK_TS);
+		const [header, payload] = token.split('.');
+		// Strict: no alphabet translation, no padding repair.
+		expect(JSON.parse(Buffer.from(header, 'base64').toString('utf8'))).toEqual({
+			alg: 'HS256',
+			typ: 'JWT',
+		});
+		const claims = JSON.parse(Buffer.from(payload, 'base64').toString('utf8')) as {
+			exp: number;
+		};
+		expect(claims.exp).toBe(Math.floor(WEBHOOK_TS / 1000) + 60);
 	});
 });

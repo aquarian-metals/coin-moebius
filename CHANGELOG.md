@@ -9,6 +9,14 @@ caret range like `^4.2.0` rolls the whole family forward together.
 
 ## [Unreleased]
 
+## [4.2.2] — 2026-09-14
+
+### Fixed
+
+- **The Zano provider could not authenticate to a wallet at all.** The access token was encoded base64url, the way a JWT normally is. Zano's `simplewallet` decodes it with a plain base64 decoder, so any token carrying a `-` or a `_` came back `401 Invalid input: not within alphabet`. A signature is 32 random bytes, so almost every token carried one, and almost every call failed. Nothing worked: no address could be minted, no payment could be seen. The token is now standard base64, padding included. Verified against `simplewallet v2.2.1.506`, where the same request returns 200 signed this way and 401 signed the old way.
+
+  The existing test normalized both alphabets before decoding, so it passed either way and never saw this. It now asserts the wire format, and new tests check fifty consecutive tokens for a base64url character and for the padding a strict decoder needs.
+
 ## [4.2.1] — 2026-09-14
 
 No code changes. Every package is identical to 4.2.0.
