@@ -9,6 +9,8 @@ caret range like `^4.2.0` rolls the whole family forward together.
 
 ## [Unreleased]
 
+## [4.3.0] — 2026-09-14
+
 ### Changed
 
 - **A quote is rounded to six significant digits rather than six decimal places, and Monero is rounded too.** A fixed count of decimal places cannot be right for every coin, because the last place is worth whatever the coin is worth. Six decimals of ZANO is a hundredth of a cent, which is nothing. Six decimals of a coin priced like Bitcoin is about eight cents, and on a five dollar sale that rounds the buyer up by more than one percent. It fails the other way too: on a small invoice in an expensive coin, most of those six places are leading zeros and the real digits fall off the end.
