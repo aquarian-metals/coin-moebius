@@ -276,7 +276,13 @@ export function createMoneroCreator(config: MoneroCreatorConfig) {
 	const now = Date.now;
 
 	return async function createMoneroPayment(input: MoneroCreateInput): Promise<MoneroCreateResult> {
-		const xmrAmount = await invoiceToXmr(input.currency, input.amount, config.xmrPerUnit);
+		const rawQuote = await invoiceToXmr(input.currency, input.amount, config.xmrPerUnit);
+		// Monero carries twelve decimals, so an exact conversion is unreadable:
+		// $10 at $150 is 0.066666666667, and nobody can check or retype that.
+		// The atomic integer below is the invoice, and it is built from the
+		// rounded figure, so the number the buyer is told to send is exactly the
+		// number that settles it.
+		const xmrAmount = roundQuoteUp(rawQuote);
 		const atomicAmount = xmrToAtomic(xmrAmount);
 
 		const paymentId = generatePaymentId(input.productId, now());
@@ -1034,6 +1040,39 @@ async function invoiceToXmr(
 }
 
 const ATOMIC_PER_XMR = 1_000_000_000_000n;
+
+/** Decimal places Monero carries. One piconero is the smallest unit. */
+const XMR_DECIMALS = 12;
+
+/**
+ * How many significant digits a quote is allowed to show a buyer.
+ *
+ * A fixed count of decimal places cannot be right for every coin, because the
+ * last place is worth whatever the coin is worth. Counting significant digits
+ * scales on its own, and it keeps its precision however small the invoice is.
+ * Monero's own twelve decimals are the ceiling.
+ */
+const QUOTE_SIGNIFICANT_DIGITS = 6;
+
+/**
+ * Round a quote up to something a person can read.
+ *
+ * Up, never down: rounding down would leave the merchant a fraction short on
+ * every order, and a buyer who sends the displayed figure would land on
+ * `partial`.
+ */
+export function roundQuoteUp(amount: number): number {
+	// Nothing to round, and log10 would not survive the attempt.
+	if (!Number.isFinite(amount) || amount <= 0) return amount;
+	// Where the first significant digit sits: -1 for 0.066, -5 for 0.0000163.
+	const magnitude = Math.floor(Math.log10(amount));
+	const places = Math.max(0, Math.min(QUOTE_SIGNIFICANT_DIGITS - 1 - magnitude, XMR_DECIMALS));
+	// toFixed rounds to nearest, which can round down. When it does, step up by
+	// one unit in the last place so the merchant is never left short.
+	const rounded = Number(amount.toFixed(places));
+	if (rounded >= amount) return rounded;
+	return Number((rounded + Number(`1e-${places}`)).toFixed(places));
+}
 
 function xmrToAtomic(xmr: number): string {
 	// Round to 12 decimals via string formatting to avoid float drift,

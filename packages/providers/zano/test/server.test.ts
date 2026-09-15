@@ -1415,15 +1415,33 @@ describe('the access token is standard base64, which is what the wallet decodes'
  * trailing digits are false precision on a rate that moves while they read it.
  */
 describe('a quote is rounded to something a buyer can read', () => {
-	it('cuts a twelve-decimal coin down to six', () => {
-		expect(roundQuoteUp(1.6207455429497568, 12)).toBe(1.620746);
+	it('cuts a twelve-decimal coin down to six significant digits', () => {
+		expect(roundQuoteUp(1.6207455429497568, 12)).toBe(1.62075);
 	});
 
 	it('leaves a coin that is already readable alone', () => {
-		// Freedom Dollar's four decimals are finer than nothing and coarser than
-		// six, so its own precision is the limit.
+		// Freedom Dollar's four decimals are coarser than the rounding would ask
+		// for, so its own precision is the limit.
 		expect(roundQuoteUp(10, 4)).toBe(10);
 		expect(roundQuoteUp(19.9909995, 4)).toBe(19.991);
+	});
+
+	// The reason this counts digits instead of places. A fixed six decimals is
+	// generous on a coin worth a few dollars and far too coarse on an expensive
+	// one: a five dollar invoice in an asset priced like Bitcoin is 0.0000632911,
+	// which six places rounds to 0.000064 and overcharges the buyer by over one
+	// percent. Counting digits keeps the same relative accuracy at any scale.
+	it('keeps its accuracy on a small amount of an expensive asset', () => {
+		expect(roundQuoteUp(0.0000632911392, 8)).toBe(0.0000633);
+		const overcharge = (0.0000633 - 0.0000632911392) / 0.0000632911392;
+		expect(overcharge).toBeLessThan(0.001);
+	});
+
+	it('spends its digits on the number, not on leading zeros', () => {
+		// Same coin, two invoice sizes. The small one is allowed more places
+		// precisely because its leading zeros carry no information.
+		expect(roundQuoteUp(0.0805153, 12)).toBe(0.0805153);
+		expect(roundQuoteUp(1.6207455429497568, 12)).toBe(1.62075);
 	});
 
 	it('always rounds up, so the merchant is never short', () => {
@@ -1438,11 +1456,22 @@ describe('a quote is rounded to something a buyer can read', () => {
 		}
 	});
 
-	it('never shows more places than it promised', () => {
+	it('never shows more digits than it promised, or more than the asset carries', () => {
+		// Via toExponential, because JavaScript prints anything under 1e-6 in
+		// exponential form and a string scan would count the exponent as digits.
+		const digits = (n: number) =>
+			Math.abs(n).toExponential().split('e')[0].replace('.', '').replace(/0+$/, '').length || 1;
 		const places = (n: number) => (n.toString().split('.')[1] ?? '').length;
-		expect(places(roundQuoteUp(1 / 3, 12))).toBeLessThanOrEqual(6);
-		expect(places(roundQuoteUp(1 / 7, 12))).toBeLessThanOrEqual(6);
+		expect(digits(roundQuoteUp(1 / 3, 12))).toBeLessThanOrEqual(6);
+		expect(digits(roundQuoteUp(1 / 7, 12))).toBeLessThanOrEqual(6);
+		expect(digits(roundQuoteUp(0.0000001234, 12))).toBeLessThanOrEqual(6);
 		expect(places(roundQuoteUp(1 / 7, 4))).toBeLessThanOrEqual(4);
+	});
+
+	it('hands back a nonsense quote untouched rather than throwing', () => {
+		expect(roundQuoteUp(0, 12)).toBe(0);
+		expect(roundQuoteUp(-1, 12)).toBe(-1);
+		expect(roundQuoteUp(Number.NaN, 12)).toBeNaN();
 	});
 
 	it('a minted invoice quotes the rounded figure, and its atomic matches', async () => {
@@ -1454,8 +1483,8 @@ describe('a quote is rounded to something a buyer can read', () => {
 			rate: async () => 1 / 6.17,
 		});
 		const invoice = await create({ productId: 'p1', amount: 10, currency: 'USD' });
-		expect(invoice.assetAmount).toBe(1.620746);
-		expect(invoice.atomicAmount).toBe(toAtomic(1.620746, 12));
-		expect(invoice.uri).toContain('amount=1.620746');
+		expect(invoice.assetAmount).toBe(1.62075);
+		expect(invoice.atomicAmount).toBe(toAtomic(1.62075, 12));
+		expect(invoice.uri).toContain('amount=1.62075');
 	});
 });
