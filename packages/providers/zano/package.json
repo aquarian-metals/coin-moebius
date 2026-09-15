@@ -1,6 +1,6 @@
 {
 	"name": "@aquarian-metals/coin-moebius-zano",
-	"version": "4.3.0",
+	"version": "4.3.1",
 	"description": "Self-hosted Zano provider for Coin Moebius — direct wallet-RPC integration for ZANO and Zano assets such as Freedom Dollar. No third-party gateway, no custodial keys. The merchant runs zanod + simplewallet and a small indexer; this package supplies the browser provider, the server-side creator (integrated addresses), the webhook verifier, and the indexer factory.",
 	"keywords": [
 		"payments",
@@ -52,10 +52,10 @@
 		"node": ">=18"
 	},
 	"dependencies": {
-		"@aquarian-metals/coin-moebius-core": "^4.3.0"
+		"@aquarian-metals/coin-moebius-core": "^4.3.1"
 	},
 	"devDependencies": {
-		"@aquarian-metals/coin-moebius-server": "^4.3.0",
+		"@aquarian-metals/coin-moebius-server": "^4.3.1",
 		"typescript": "~5.8.0"
 	},
 	"publishConfig": {
