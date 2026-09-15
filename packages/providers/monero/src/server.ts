@@ -559,7 +559,9 @@ export function createMoneroIndexer(config: MoneroIndexerConfig): MoneroIndexer 
 			logger.warn('monero: transfer for unknown payment', { paymentId });
 			return false;
 		}
-		if (record.status === 'success' || record.status === 'partial' || record.status === 'failed') {
+		// `failed` is not terminal: an expired invoice whose money turns up days
+		// later still settles. Telling that buyer to start over makes them pay twice.
+		if (record.status === 'success' || record.status === 'partial') {
 			return false;
 		}
 

@@ -952,6 +952,28 @@ describe('createZanoIndexer', () => {
 		expect(ctx.indexer.status().pendingPaymentCount).toBe(1);
 	});
 
+	it('tick(): settles an expired invoice whose money turns up later', async () => {
+		let currentTime = 1_700_000_000_000;
+		const ctx = await setup({ now: () => currentTime });
+
+		currentTime = ctx.zanoInvoice.expiresAt + 1000;
+		await ctx.indexer.tick();
+		expect((await ctx.store.get(ctx.zanoInvoice.paymentId))?.status).toBe('failed');
+
+		ctx.pay(ctx.zanoInvoice, {
+			amount: 100_000_000_000,
+			height: ctx.wallet.state.height - 20,
+		});
+		currentTime += 2 * 24 * 60 * 60 * 1000;
+		await ctx.indexer.tick();
+
+		expect((await ctx.store.get(ctx.zanoInvoice.paymentId))?.status).toBe('success');
+		const settled = ctx.webhookCalls
+			.map((c) => JSON.parse(c.body) as ZanoWebhookPayload)
+			.filter((pl) => pl.paymentId === ctx.zanoInvoice.paymentId && pl.status === 'success');
+		expect(settled).toHaveLength(1);
+	});
+
 	it('tick(): leaves unpaid invoices pending and warns once when the store cannot list them', async () => {
 		let currentTime = 1_700_000_000_000;
 		const ctx = await setup({ now: () => currentTime });
