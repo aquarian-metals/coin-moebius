@@ -949,26 +949,38 @@ export async function zanoAccessToken(
 }
 
 /**
- * How many decimal places a quote is allowed to show a buyer.
+ * How many significant digits a quote is allowed to show a buyer.
  *
- * ZANO carries twelve, which makes an exact conversion unreadable: $10 at
- * $6.17 is 1.62074554295, and nobody can check or retype that. The trailing
- * digits are false precision anyway, since the rate moves while they read it.
+ * A fixed count of decimal places cannot be right for every asset, because the
+ * last place is worth whatever the asset is worth. Six decimals of ZANO is a
+ * hundredth of a cent, which is nothing. Six decimals of an asset priced like
+ * Bitcoin is roughly eight cents, which is real money to round away on a five
+ * dollar sale. It fails the other way too: on a small invoice in an expensive
+ * asset the entire amount can sit below the sixth decimal, and a fixed six
+ * would round the whole thing to nothing.
+ *
+ * Counting significant digits scales on its own. One rule reads 1.61813 on
+ * ZANO and 0.00001235 on something expensive, and it keeps its precision
+ * however small the invoice is.
  */
-const QUOTE_DECIMALS = 6;
+const QUOTE_SIGNIFICANT_DIGITS = 6;
 
 /**
  * Round a quote up to something a person can read.
  *
  * Up, never down: rounding down would leave the merchant a fraction short on
  * every order, and a buyer who sends the displayed figure would land on
- * `partial`. Up costs the buyer a rounding error far below a cent and keeps the
- * displayed number payable. An asset finer than {@link QUOTE_DECIMALS} is
- * rounded to that; one that is coarser (Freedom Dollar's four) is untouched,
+ * `partial`. Up costs the buyer a rounding error well under a cent and keeps
+ * the displayed number payable. An asset whose own precision is coarser than
+ * the rounding would ask for (Freedom Dollar's four) is left untouched,
  * because its own precision is already readable.
  */
 export function roundQuoteUp(amount: number, decimalPoint: number): number {
-	const places = Math.min(QUOTE_DECIMALS, decimalPoint);
+	// Nothing to round, and log10 would not survive the attempt.
+	if (!Number.isFinite(amount) || amount <= 0) return amount;
+	// Where the first significant digit sits: 0 for 1.6, -5 for 0.0000163.
+	const magnitude = Math.floor(Math.log10(amount));
+	const places = Math.max(0, Math.min(QUOTE_SIGNIFICANT_DIGITS - 1 - magnitude, decimalPoint));
 	return Number(formatAtomic(BigInt(toAtomic(amount, places)), places));
 }
 

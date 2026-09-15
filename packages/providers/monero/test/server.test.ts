@@ -7,6 +7,7 @@ import {
 	createMoneroVerifier,
 	createMoneroIndexer,
 	computeMoneroSignature,
+	roundQuoteUp,
 	type MoneroWebhookPayload,
 } from '../src/server.js';
 
@@ -1029,5 +1030,50 @@ describe('createMoneroIndexer', () => {
 				hmacSecret: '',
 			}),
 		).toThrow(/hmacSecret missing/);
+	});
+});
+
+/**
+ * Monero carries twelve decimals, so an exact conversion is unreadable: $10 at
+ * $150 is 0.066666666667. A buyer cannot check or retype that, and the trailing
+ * digits are false precision on a rate that moves while they read it.
+ */
+describe('a quote is rounded to something a buyer can read', () => {
+	it('cuts a twelve-decimal conversion down to six significant digits', () => {
+		expect(roundQuoteUp(0.0666666666667)).toBe(0.0666667);
+	});
+
+	it('always rounds up, so the merchant is never short', () => {
+		for (const value of [0.0666666666667, 0.00166666666, 1 / 3, 1 / 7, 0.0000001234]) {
+			expect(roundQuoteUp(value)).toBeGreaterThanOrEqual(value);
+		}
+	});
+
+	// Counting digits rather than places is what keeps a small invoice accurate.
+	// A quarter's worth of Monero is 0.00166666, and a fixed six places would
+	// round it to 0.001667, spending four of its six digits on leading zeros.
+	it('spends its digits on the number, not on leading zeros', () => {
+		expect(roundQuoteUp(0.00166666666)).toBe(0.00166667);
+		const digits = (n: number) =>
+			Math.abs(n).toExponential().split('e')[0].replace('.', '').replace(/0+$/, '').length || 1;
+		expect(digits(roundQuoteUp(0.00166666666))).toBeLessThanOrEqual(6);
+		expect(digits(roundQuoteUp(0.0000001234))).toBeLessThanOrEqual(6);
+	});
+
+	it('never asks for more precision than Monero carries', () => {
+		// Derived from the exponent rather than a fixed-width string, because
+		// toFixed past float precision invents digits that are not really there.
+		const places = (n: number) => {
+			const [mantissa, exponent] = Math.abs(n).toExponential().split('e');
+			return Math.max(0, (mantissa.split('.')[1] ?? '').length - Number(exponent));
+		};
+		expect(places(roundQuoteUp(1 / 3))).toBeLessThanOrEqual(12);
+		expect(places(roundQuoteUp(0.0000000001234))).toBeLessThanOrEqual(12);
+	});
+
+	it('hands back a nonsense quote untouched rather than throwing', () => {
+		expect(roundQuoteUp(0)).toBe(0);
+		expect(roundQuoteUp(-1)).toBe(-1);
+		expect(roundQuoteUp(Number.NaN)).toBeNaN();
 	});
 });

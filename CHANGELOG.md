@@ -9,6 +9,14 @@ caret range like `^4.2.0` rolls the whole family forward together.
 
 ## [Unreleased]
 
+### Changed
+
+- **A quote is rounded to six significant digits rather than six decimal places, and Monero is rounded too.** A fixed count of decimal places cannot be right for every coin, because the last place is worth whatever the coin is worth. Six decimals of ZANO is a hundredth of a cent, which is nothing. Six decimals of a coin priced like Bitcoin is about eight cents, and on a five dollar sale that rounds the buyer up by more than one percent. It fails the other way too: on a small invoice in an expensive coin, most of those six places are leading zeros and the real digits fall off the end.
+
+  Counting significant digits scales on its own. One rule reads `1.62075` on ZANO and `0.0000633` on something expensive, and it holds the same relative accuracy however small the invoice is. The coin's own precision is still the ceiling, so Freedom Dollar's four places are untouched.
+
+  Monero had no rounding at all and quoted the raw conversion, so a ten dollar order asked the buyer for `0.066666666667`. It now uses the same rule and asks for `0.0666667`. Rounding stays **up** on both rails, so the merchant is never left a fraction short.
+
 ## [4.2.3] — 2026-09-14
 
 ### Changed
