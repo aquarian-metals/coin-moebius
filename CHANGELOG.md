@@ -9,6 +9,10 @@ caret range like `^4.2.0` rolls the whole family forward together.
 
 ## [Unreleased]
 
+### Fixed
+
+- **An expired invoice whose money turns up later now settles instead of being ignored.** Expiry marked an invoice `failed`, and the indexer skipped any record already in a terminal state, so a payment that confirmed after the window closed was never seen and never reported. On a congested chain that is an ordinary Tuesday, and the buyer was being told to start over, which is how somebody pays twice. `failed` is no longer treated as terminal by the watcher: a late payment is matched, announced, and settles as a normal sale. Both Zano and Monero.
+
 ## [4.3.0] — 2026-09-14
 
 ### Changed
