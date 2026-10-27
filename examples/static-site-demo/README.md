@@ -2,7 +2,7 @@
 
 A working, locally-runnable demo of the SDK against five providers: Stripe (hosted checkout), Cryptomus (hosted crypto gateway), self-hosted Monero, self-hosted Zano (ZANO and Freedom Dollar), and self-hosted Bitcoin.
 
-The Stripe and Cryptomus integrations talk to their real APIs (so you'll need test keys to exercise them end-to-end). The Monero and Zano integrations run entirely offline by default through in-process mocks of `monero-wallet-rpc` and `simplewallet`; point either at a real wallet by toggling one env var. The Bitcoin integration talks to a real Bitcoin Core node, and runs on a local regtest chain with nothing to download.
+The Stripe and Cryptomus integrations talk to their real APIs (so you'll need test keys to exercise them end-to-end). The Monero and Zano integrations run entirely offline by default through in-process mocks of `monero-wallet-rpc` and `simplewallet`; point either at a real wallet by toggling one env var. The Bitcoin integration talks to a real Bitcoin Core node; run one in regtest mode to try it locally.
 
 > **NOWPayments is not in this demo.** It's redirect-based (like Stripe) and requires webhook forwarding back to localhost, which adds friction without teaching anything the Stripe tile doesn't already cover. See `packages/providers/nowpayments/README.md` for integration patterns.
 
@@ -81,9 +81,9 @@ npm run dev
 
 With `ZANO_MOCK` unset, the creator and the indexer both talk to your wallet. Production deployments should bump `requiredConfirmations` back to the package default (10); see `docs/self-hosted-zano.md`.
 
-## Run the Bitcoin flow on regtest (no download)
+## Run the Bitcoin flow on regtest
 
-Bitcoin needs no simulator. Bitcoin Core's regtest mode starts an empty, private chain on your machine, so there is nothing to download and every transaction is real. You only need Bitcoin Core installed (`brew install bitcoin` on a Mac).
+Bitcoin Core's regtest mode starts an empty, private chain on your machine. You need Bitcoin Core installed (`brew install bitcoin` on a Mac).
 
 ```bash
 bitcoind -regtest -daemon -fallbackfee=0.0001 -rpcuser=demo -rpcpassword=demo

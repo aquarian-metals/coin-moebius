@@ -24,9 +24,12 @@
  *   4. {@link computeBitcoinSignature}: the HMAC helper so custom indexers
  *      and tests can produce signatures the verifier accepts.
  *
- * The wallet should be watch-only: a descriptor wallet created with private
- * keys disabled, holding only the merchant's extended public key. It can
- * hand out addresses and see payments, and it cannot spend.
+ * Topology note: the indexer MUST run inside the same private network
+ * trust boundary as `bitcoind`. For a hobbyist that's the same box; for a
+ * business that's the same VPC / Tailscale tailnet / k8s cluster. `rpcUrl`
+ * is a normal HTTP URL; whether it points at localhost, an internal
+ * hostname, or a cluster-internal service is the merchant's choice and the
+ * library does not care.
  */
 
 import type { PaymentStatus, WebhookEvent } from '@aquarian-metals/coin-moebius-core';

@@ -17,7 +17,7 @@ The buyer's page checks in with your site every few seconds, so they see "paid" 
 ## What you need
 
 - A server with Node.js 18 or newer. A rented virtual server is fine.
-- Bitcoin Core, version 28 or newer.
+- Bitcoin Core. Use a current release.
 - Disk space. The first start downloads and checks the whole Bitcoin ledger, which is the full record of every Bitcoin transaction. With pruning turned on (step 2), the node throws old blocks away as it goes and keeps only the newest ones, so it needs far less room afterward. Your shop wallet only ever looks at new payments, so a pruned node is all it needs.
 - Your recovery words kept somewhere that is not the server.
 

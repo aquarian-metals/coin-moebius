@@ -37,7 +37,7 @@ Every provider is its own package. Install only what you need. Each package ship
 | Cryptomus            | `@aquarian-metals/coin-moebius-cryptomus`         | Crypto (geo-restricted in the US)                           |
 | Monero               | `@aquarian-metals/coin-moebius-monero`            | Crypto (self-hosted node, no third-party gateway)           |
 | Zano                 | `@aquarian-metals/coin-moebius-zano`              | Crypto (self-hosted node; ZANO and Freedom Dollar)          |
-| Bitcoin              | `@aquarian-metals/coin-moebius-bitcoin`           | Crypto (self-hosted Bitcoin Core, watch-only wallet)        |
+| Bitcoin              | `@aquarian-metals/coin-moebius-bitcoin`           | Crypto (self-hosted node, no third-party gateway)           |
 | Manual / pay by mail | `@aquarian-metals/coin-moebius-manual`            | Off-rail confirmations (cash, check, Goldbacks, anything)   |
 
 Two foundation packages back them:
@@ -231,6 +231,7 @@ We expect the community to build the rest. Want to accept Solana or Lightning?
 - **[CHANGELOG.md](./CHANGELOG.md)** — the formal record of changes per release.
 - **[docs/integration-stripe.md](./docs/integration-stripe.md)** — end-to-end walkthrough for accepting Stripe payments, including Stripe Dashboard setup, environment variables, deployment notes, and common failure modes.
 - **[docs/self-hosted-zano.md](./docs/self-hosted-zano.md)** — self-hosting guide for taking ZANO and Freedom Dollar with no processor: node, watch-only wallet in RPC mode, JWT auth, the indexer, and how payments are matched.
+- **[docs/self-hosted-bitcoin.md](./docs/self-hosted-bitcoin.md)** — self-hosting guide for taking bitcoin with no processor: node, watch-only wallet, the indexer, and how payments are matched.
 - **[docs/subscriptions.md](./docs/subscriptions.md)** — how the SDK handles recurring billing on fiat providers. Covers the five normalized event types, the pass-through model, and the `getStripePortalUrl` helper for cancellation.
 - **[docs/accessibility.md](./docs/accessibility.md)** — the `<coin-moebius-buy>` button's WCAG 2.1 AA support, what's shared with the site owner (custom color contrast, icon-only labels), and the formal conformance report (VPAT).
 - **API reference** — generated from TSDoc via `npm run docs` → `docs/api/index.html`.

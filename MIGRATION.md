@@ -192,7 +192,7 @@ The new `@aquarian-metals/coin-moebius-bitcoin` package is purely additive. No e
 npm install @aquarian-metals/coin-moebius-bitcoin
 ```
 
-See `docs/self-hosted-bitcoin.md` for the self-hosting walkthrough (pruned node, watch-only descriptor wallet, the indexer, a regtest recipe) and `examples/static-site-demo/bitcoin/` for copy-paste serverless functions, an indexer, a systemd unit, and a docker-compose recipe. The indexer uses `PaymentStore.listPending` the same way the Zano indexer does.
+See `docs/self-hosted-bitcoin.md` for the self-hosting walkthrough (node, watch-only wallet, the indexer, a regtest recipe) and `examples/static-site-demo/bitcoin/` for copy-paste serverless functions, an indexer, a systemd unit, and a docker-compose recipe. The indexer uses `PaymentStore.listPending` the same way the Zano indexer does.
 
 ### 8. Subscription support (additive)
 

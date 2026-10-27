@@ -1,6 +1,6 @@
 # @aquarian-metals/coin-moebius-bitcoin
 
-Self-hosted Bitcoin provider for **[Coin Moebius](https://github.com/aquarian-metals/coin-moebius)**. No custodial third-party gateway, no API keys to a payment processor. The merchant runs Bitcoin Core with a watch-only wallet, and this package supplies everything else.
+Self-hosted Bitcoin provider for **[Coin Moebius](https://github.com/aquarian-metals/coin-moebius)**. No custodial third-party gateway, no API keys to a payment processor, no merchant-tax-form-collecting middleman. The merchant runs `bitcoind`, this package supplies everything else.
 
 Two entries in one package:
 
@@ -9,12 +9,14 @@ Two entries in one package:
 
 ## Why a self-hosted Bitcoin provider
 
-- **No counterparty.** Funds land directly in a wallet you control.
+Custodial gateways (Cryptomus, NOWPayments, BTCPay-as-a-service) ask you to trust them with your money, your KYC, and your geo-availability. Self-hosting Bitcoin gives you:
+
+- **No counterparty.** Funds land directly in a wallet you control. No "gateway froze our account" thread on r/Bitcoin ends with your store.
 - **No third-party API keys.** Nothing on a vendor's dashboard can be revoked from under you.
-- **No spending keys on the server.** The node holds a watch-only wallet made from your public key. It can hand out addresses and see payments, and it cannot spend.
+- **No geo limits.** Cryptomus is geo-blocked in the US; NOWPayments is fine but is a custodian. Self-hosted has no political surface.
 - **No fee skim.** The only fee is the Bitcoin network fee, which the buyer pays.
 
-The trade-off is operational: you (or your VPS) run Bitcoin Core. A pruned node is enough, because the shop wallet only ever looks at new payments.
+The trade-off is operational: you (or your VPS) run a Bitcoin node. This package makes the wiring on top of that as small as possible.
 
 ## Install
 
@@ -125,13 +127,11 @@ process.on('SIGTERM', stop);
 process.on('SIGINT', stop);
 ```
 
-How it decides:
+## Why downtime is cheap
 
-- **Matching.** Every checkout's address is labeled with its payment id in the wallet. The indexer reads the wallet's incoming transactions with `listsinceblock` and groups them by label.
-- **Confirmations** come from the node, so a block that is reorganized away lowers the count. A transaction the node reports as conflicted (double-spent) is never counted. One confirmation settles by default; raise `requiredConfirmations` for bigger sales.
-- **Progress.** While a payment waits for its block, the indexer posts `status: 'pending'` webhooks as the confirmation count moves, so a checkout can show it.
-- **Catch-up.** Each tick looks back `requiredConfirmations + scanLookbackBlocks` blocks (144 extra by default, about a day), so an indexer that was offline sends what it missed when it returns.
-- **Expiry.** When the store implements `listPending`, unpaid invoices past `expiresAt` are announced `failed`, after one last `getreceivedbyaddress` check confirms nothing ever reached the address. A late payment on a failed invoice still settles.
+The indexer is **catch-up by design**. If it's offline for an hour, the next tick queries the node for the missed block range and emits the webhooks then. Buyers see a stale "pending" during the outage; nothing is lost, nothing requires manual reconciliation.
+
+Compared to a hosted gateway, where downtime on the gateway's end means missed events and refund tickets, your operational SLA for self-hosted Bitcoin is "eventually consistent within a few minutes." That's a much easier bar to meet than "five-nines uptime," and it's the property that makes self-hosting realistic for indie merchants who don't run an ops team.
 
 ## Node setup notes
 
