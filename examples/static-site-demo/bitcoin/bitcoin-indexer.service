@@ -16,8 +16,11 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=bitcoin
-Group=bitcoin
+# A user of its own, not the node's `bitcoin` user, so the indexer cannot
+# read the node's data folder or wallets. Create it once:
+#   sudo useradd --system --no-create-home --shell /usr/sbin/nologin coin-moebius
+User=coin-moebius
+Group=coin-moebius
 WorkingDirectory=/opt/coin-moebius
 ExecStart=/usr/bin/node /opt/coin-moebius/indexer.js
 Restart=on-failure
@@ -29,10 +32,12 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/log/coin-moebius
+# The leading `-` lets the service start when the folder does not exist yet.
+ReadWritePaths=-/var/log/coin-moebius
 
-# Env. Edit these. The two secrets belong in the EnvironmentFile, which
-# should be readable by the bitcoin user only.
+# Env. Edit these. The three secrets (BITCOIN_RPC_USER, BITCOIN_RPC_PASSWORD,
+# BITCOIN_HMAC_SECRET) belong in the EnvironmentFile, which should be
+# readable by the coin-moebius user only.
 Environment=BITCOIN_RPC_URL=http://127.0.0.1:8332
 Environment=BITCOIN_WALLET=shop
 Environment=BITCOIN_WEBHOOK_URL=https://your-site.example/api/payment-webhook

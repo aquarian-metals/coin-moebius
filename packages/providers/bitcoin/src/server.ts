@@ -65,7 +65,16 @@ export interface BitcoinRpcConfig {
 	rpcPassword?: string;
 	/** Optional `fetch` override, for tests and custom transports. */
 	fetcher?: typeof fetch;
+	/**
+	 * How long one call to the node, or one webhook delivery, may take before
+	 * it is abandoned, in ms. Without a limit a server that never answers
+	 * would hold the indexer's single tick for minutes per attempt. Defaults
+	 * to 30 seconds.
+	 */
+	requestTimeoutMs?: number;
 }
+
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 
 /**
  * Configuration for {@link createBitcoinCreator}. The creator runs
@@ -144,6 +153,12 @@ export interface BitcoinWebhookPayload {
 	txHash: string | null;
 	/** The address the buyer was given. */
 	address: string;
+	/**
+	 * The product the checkout was for, so fulfillment knows what to deliver
+	 * from the webhook alone. Optional so hand-written indexers that predate
+	 * it still verify.
+	 */
+	productId?: string;
 	/** Original invoice currency (e.g. `'USD'`, `'BTC'`). */
 	invoiceCurrency: string;
 	/** Original invoice amount in `invoiceCurrency`. */
@@ -297,6 +312,7 @@ export function createBitcoinCreator(config: BitcoinCreatorConfig) {
 				address,
 				atomicAmount,
 				btcAmount,
+				invoiceAmount: input.amount,
 				expiresAt,
 			},
 			timestamp: now(),
@@ -365,6 +381,11 @@ export function createBitcoinVerifier(config: BitcoinVerifierConfig): BitcoinVer
 			) {
 				throw new Error('coin-moebius/bitcoin: webhook timestamp outside the freshness window');
 			}
+			// A signature only proves who signed. If the same secret is reused for
+			// another provider's indexer, its messages would verify here too.
+			if (payload.provider !== 'bitcoin') {
+				throw new Error('coin-moebius/bitcoin: webhook is not a bitcoin payment');
+			}
 
 			return toPaymentResult(payload);
 		},
@@ -424,6 +445,7 @@ export function createBitcoinIndexer(config: BitcoinIndexerConfig): BitcoinIndex
 	}
 	const scanLookback = config.scanLookbackBlocks ?? 144;
 	const pollIntervalMs = config.pollIntervalMs ?? 30_000;
+	const requestTimeoutMs = config.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
 	const fetcher = config.fetcher ?? globalThis.fetch.bind(globalThis);
 	const logger = config.logger ?? noopLogger();
 	const now = config.now ?? Date.now;
@@ -518,28 +540,30 @@ export function createBitcoinIndexer(config: BitcoinIndexerConfig): BitcoinIndex
 		const counted = receipts.filter((receipt) => receipt.address === address);
 		if (counted.length === 0) return false;
 
+		// Without the invoiced amount there is nothing to measure the payment
+		// against, and treating it as zero would settle any dust as paid in full.
+		// This happens when a webhook handler replaces the record's metadata
+		// with the event's instead of merging it.
 		const expectedAtomic = readBigIntMetadata(record, 'atomicAmount');
-		const receivedAtomic = counted.reduce((sum, receipt) => sum + receipt.amount, 0n);
-		const confirmations = Math.min(...counted.map((receipt) => receipt.confirmations));
-		const minedHeights = counted
-			.map((receipt) => receipt.blockHeight)
-			.filter((height): height is number => height !== null);
-		const blockHeight = minedHeights.length > 0 ? Math.min(...minedHeights) : null;
+		if (expectedAtomic <= 0n) {
+			throw new Error(
+				'coin-moebius/bitcoin: the stored payment has no atomicAmount, so it cannot be checked; refusing to settle it',
+			);
+		}
 
-		const observation: Observation = {
-			paymentId,
-			record,
-			expectedAtomic,
-			receivedAtomic,
-			confirmations,
-			txHash: counted[0]?.txid ?? null,
-			blockHeight,
-		};
+		// Settle on the money that has already confirmed. Waiting for every
+		// output would let one unconfirmed output, which anyone can send to a
+		// visible address, hold a fully paid order open indefinitely.
+		const confirmed = counted.filter((receipt) => receipt.confirmations >= requiredConfirmations);
+		const confirmedAtomic = sumAtomic(confirmed);
+		let status: BitcoinWebhookPayload['status'] | null = null;
+		if (confirmedAtomic >= expectedAtomic) status = 'success';
+		else if (confirmed.length === counted.length) status = 'partial';
 
-		if (confirmations < requiredConfirmations) return await announceProgress(observation);
+		const observation = observe(paymentId, record, expectedAtomic, status ? confirmed : counted);
 
-		const status: BitcoinWebhookPayload['status'] =
-			receivedAtomic >= expectedAtomic ? 'success' : 'partial';
+		if (!status) return await announceProgress(observation);
+
 		const winner = await claimAnnouncement(paymentId, status);
 		if (!winner) return false;
 
@@ -548,12 +572,15 @@ export function createBitcoinIndexer(config: BitcoinIndexerConfig): BitcoinIndex
 		await config.store.upsert({
 			...record,
 			status,
-			amount: status === 'partial' ? proratedInvoiceAmount(record, receivedAtomic) : record.amount,
+			amount:
+				status === 'partial'
+					? proratedInvoiceAmount(record, observation.receivedAtomic)
+					: invoiceAmountOf(record),
 			metadata: {
 				...record.metadata,
 				txHash: observation.txHash,
-				receivedAtomic: receivedAtomic.toString(),
-				confirmations,
+				receivedAtomic: observation.receivedAtomic.toString(),
+				confirmations: observation.confirmations,
 			},
 			timestamp: now(),
 			createdAt: record.createdAt,
@@ -561,6 +588,26 @@ export function createBitcoinIndexer(config: BitcoinIndexerConfig): BitcoinIndex
 		});
 
 		return true;
+	}
+
+	function observe(
+		paymentId: string,
+		record: PaymentRecord,
+		expectedAtomic: bigint,
+		receipts: Receipt[],
+	): Observation {
+		const minedHeights = receipts
+			.map((receipt) => receipt.blockHeight)
+			.filter((height): height is number => height !== null);
+		return {
+			paymentId,
+			record,
+			expectedAtomic,
+			receivedAtomic: sumAtomic(receipts),
+			confirmations: Math.min(...receipts.map((receipt) => receipt.confirmations)),
+			txHash: receipts[0]?.txid ?? null,
+			blockHeight: minedHeights.length > 0 ? Math.min(...minedHeights) : null,
+		};
 	}
 
 	/**
@@ -600,8 +647,9 @@ export function createBitcoinIndexer(config: BitcoinIndexerConfig): BitcoinIndex
 			status,
 			txHash: observation.txHash,
 			address: readStringMetadata(observation.record, 'address'),
+			...productIdOf(observation.record),
 			invoiceCurrency: observation.record.currency,
-			invoiceAmount: observation.record.amount,
+			invoiceAmount: invoiceAmountOf(observation.record),
 			expectedAmountAtomic: observation.expectedAtomic.toString(),
 			receivedAmountAtomic: observation.receivedAtomic.toString(),
 			expectedAmountBtc: fromAtomic(observation.expectedAtomic),
@@ -662,8 +710,9 @@ export function createBitcoinIndexer(config: BitcoinIndexerConfig): BitcoinIndex
 					status: 'failed',
 					txHash: null,
 					address,
+					...productIdOf(record),
 					invoiceCurrency: record.currency,
-					invoiceAmount: record.amount,
+					invoiceAmount: invoiceAmountOf(record),
 					expectedAmountAtomic: expectedAtomic.toString(),
 					receivedAmountAtomic: '0',
 					expectedAmountBtc: fromAtomic(expectedAtomic),
@@ -755,6 +804,7 @@ export function createBitcoinIndexer(config: BitcoinIndexerConfig): BitcoinIndex
 						'x-provider': 'bitcoin',
 					},
 					body,
+					signal: AbortSignal.timeout(requestTimeoutMs),
 				});
 				if (response.ok) return;
 				throw new Error(`webhook responded ${response.status}`);
@@ -902,7 +952,12 @@ function rpcCaller(config: BitcoinRpcConfig): Rpc {
 		if (authorization) headers.Authorization = authorization;
 		const body = JSON.stringify({ jsonrpc: '2.0', id: '0', method, params });
 
-		const response = await fetcher(endpoint, { method: 'POST', headers, body });
+		const response = await fetcher(endpoint, {
+			method: 'POST',
+			headers,
+			body,
+			signal: AbortSignal.timeout(config.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS),
+		});
 		if (response.status === 401 || response.status === 403) {
 			throw new Error(
 				`coin-moebius/bitcoin: node refused ${method} (${response.status}). Check rpcUser and rpcPassword.`,
@@ -986,6 +1041,15 @@ function withoutIndexerFields(metadata: Record<string, unknown>): Record<string,
 	return Object.fromEntries(Object.entries(metadata).filter(([key]) => !INDEXER_FIELDS.has(key)));
 }
 
+function productIdOf(record: PaymentRecord): { productId?: string } {
+	const productId = readStringMetadata(record, 'productId');
+	return productId ? { productId } : {};
+}
+
+function sumAtomic(receipts: Receipt[]): bigint {
+	return receipts.reduce((sum, receipt) => sum + receipt.amount, 0n);
+}
+
 function groupByPaymentId(received: Receipt[]): Map<string, Receipt[]> {
 	const observed = new Map<string, Receipt[]>();
 	for (const receipt of received) {
@@ -1062,6 +1126,7 @@ function toPaymentResult(payload: BitcoinWebhookPayload): WebhookEvent {
 		currency: payload.invoiceCurrency,
 		metadata: {
 			address: payload.address,
+			...(typeof payload.productId === 'string' ? { productId: payload.productId } : {}),
 			txHash: payload.txHash,
 			confirmations: payload.confirmations,
 			requiredConfirmations: payload.requiredConfirmations,
@@ -1078,7 +1143,7 @@ function toPaymentResult(payload: BitcoinWebhookPayload): WebhookEvent {
 
 function proratedInvoiceAmount(record: PaymentRecord, receivedAtomic: bigint): number {
 	return proratedFromAtomic(
-		record.amount,
+		invoiceAmountOf(record),
 		readBigIntMetadata(record, 'atomicAmount'),
 		receivedAtomic,
 	);
@@ -1095,8 +1160,20 @@ function proratedFromAtomic(
 
 function readBigIntMetadata(record: PaymentRecord, key: string): bigint {
 	const raw = record.metadata[key];
+	// Some stores hand JSON numbers back as numbers. A whole, safe one is the
+	// same amount and must read as such, or a paid order is stuck for good.
+	if (typeof raw === 'number' && Number.isSafeInteger(raw) && raw > 0) return BigInt(raw);
 	if (typeof raw !== 'string' || !/^\d+$/.test(raw)) return 0n;
 	return BigInt(raw);
+}
+
+/**
+ * The invoice amount in the checkout's own currency. Kept in metadata as well
+ * as on the record, because a webhook handler that saves a `failed` event
+ * writes that event's amount, 0, over the record's.
+ */
+function invoiceAmountOf(record: PaymentRecord): number {
+	return readNumberMetadata(record, 'invoiceAmount') ?? record.amount;
 }
 
 function readStringMetadata(record: PaymentRecord, key: string): string {

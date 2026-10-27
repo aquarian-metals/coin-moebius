@@ -8,14 +8,23 @@
 # turnkey image.
 #
 # Before first boot:
-#   1. Fill in the .env values referenced below.
-#   2. docker compose up -d bitcoind
-#   3. Wait for the node to sync: docker compose exec bitcoind bitcoin-cli
-#      -rpcuser=... -rpcpassword=... getblockchaininfo
-#   4. Create the watch-only wallet and import your public key, as in
+#   1. Make the RPC password and its hashed form. The node only ever sees
+#      the hash, so the password never appears in `ps` or `docker inspect`
+#      for the node:
+#        PASS=$(openssl rand -hex 32); SALT=$(openssl rand -hex 16)
+#        HASH=$(printf %s "$PASS" | openssl dgst -sha256 -hmac "$SALT" | awk '{print $NF}')
+#        echo "BITCOIN_RPC_PASSWORD=$PASS" >> .env
+#        echo "BITCOIN_RPCAUTH='shop:$SALT\$$HASH'" >> .env
+#      Keep the single quotes around BITCOIN_RPCAUTH: its `$` must not be
+#      read as a variable.
+#   2. Fill in the other .env values referenced below.
+#   3. docker compose up -d bitcoind
+#   4. Wait for the node to sync: docker compose exec bitcoind bitcoin-cli
+#      -rpcuser=shop -rpcpassword=... getblockchaininfo
+#   5. Create the watch-only wallet and import your public key, as in
 #      docs/self-hosted-bitcoin.md.
-#   5. docker compose up -d indexer
-#   6. Watch logs: docker compose logs -f indexer
+#   6. docker compose up -d indexer
+#   7. Watch logs: docker compose logs -f indexer
 #
 # With -prune the node keeps only the newest block files, but the first
 # sync still downloads and checks the whole chain. Plan accordingly.
@@ -34,8 +43,7 @@ services:
       - -prune=550
       - -rpcbind=0.0.0.0
       - -rpcallowip=172.16.0.0/12
-      - -rpcuser=${BITCOIN_RPC_USER:?BITCOIN_RPC_USER must be set in .env}
-      - -rpcpassword=${BITCOIN_RPC_PASSWORD:?BITCOIN_RPC_PASSWORD must be set in .env}
+      - -rpcauth=${BITCOIN_RPCAUTH:?BITCOIN_RPCAUTH must be set in .env}
 
   indexer:
     image: node:lts-alpine
@@ -44,13 +52,18 @@ services:
     depends_on:
       - bitcoind
     working_dir: /app
+    # Only the indexer's own files, read-only. Never mount this whole folder:
+    # it holds ./bitcoin-data, the node's wallets.
     volumes:
-      - ./:/app
-    command: sh -c "npm install --no-save @aquarian-metals/coin-moebius-bitcoin @aquarian-metals/coin-moebius-server && node indexer.js"
+      - ./indexer.js:/app/indexer.js:ro
+      - ./_store.js:/app/_store.js:ro
+    # Exact versions, and no install scripts, so a restart never pulls in code
+    # you have not chosen. Move the versions forward yourself.
+    command: sh -c "npm install --no-save --ignore-scripts @aquarian-metals/coin-moebius-bitcoin@4.4.1 @aquarian-metals/coin-moebius-server@4.4.1 && node indexer.js"
     environment:
       BITCOIN_RPC_URL: http://bitcoind:8332
       BITCOIN_WALLET: shop
-      BITCOIN_RPC_USER: ${BITCOIN_RPC_USER:?BITCOIN_RPC_USER must be set in .env}
+      BITCOIN_RPC_USER: shop
       BITCOIN_RPC_PASSWORD: ${BITCOIN_RPC_PASSWORD:?BITCOIN_RPC_PASSWORD must be set in .env}
       BITCOIN_WEBHOOK_URL: ${BITCOIN_WEBHOOK_URL:?BITCOIN_WEBHOOK_URL must be set in .env}
       BITCOIN_HMAC_SECRET: ${BITCOIN_HMAC_SECRET:?BITCOIN_HMAC_SECRET must be set in .env}

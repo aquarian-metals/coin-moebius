@@ -104,6 +104,14 @@ bitcoin-cli -rpcwallet=shop getnewaddress
 
 You should get a `bc1q…` address, and the same address should appear in the wallet you made in step 3.
 
+Back up the shop wallet now, and again on a schedule:
+
+```bash
+bitcoin-cli -rpcwallet=shop backupwallet /path/to/backups/shop.bak
+```
+
+The backup holds no spending keys. It holds the list of addresses already handed out and which order each one belongs to. You need it if you ever move or rebuild the server (see "Moving or rebuilding the shop wallet" below).
+
 ## Step 5: make a secret and write down your settings
 
 You need one random secret:
@@ -168,6 +176,7 @@ This code needs to reach your node. If your website host cannot reach a node on 
 
 ```js
 // /api/payment-webhook
+import { isStatusRegression } from '@aquarian-metals/coin-moebius-core';
 import { createVerifierRegistry } from '@aquarian-metals/coin-moebius-server';
 import { createBitcoinVerifier } from '@aquarian-metals/coin-moebius-bitcoin/server';
 import { myStore } from './store.js';
@@ -178,11 +187,31 @@ verifiers.register('bitcoin', createBitcoinVerifier({ hmacSecret: process.env.BI
 export default async (req) => {
   const result = await verifiers.verify(await req.text(), Object.fromEntries(req.headers));
   if (!result) return new Response('', { status: 200 });
-  await myStore.upsert({ ...result, createdAt: result.timestamp, updatedAt: Date.now() });
-  if (result.status === 'success') await fulfill(result);
+
+  const existing = await myStore.get(result.paymentId);
+  if (existing && isStatusRegression(existing.status, result.status)) {
+    return new Response('', { status: 200 });
+  }
+  const order = {
+    ...existing,
+    ...result,
+    metadata: { ...existing?.metadata, ...result.metadata },
+    createdAt: existing?.createdAt ?? result.timestamp,
+    updatedAt: Date.now(),
+  };
+  await myStore.upsert(order);
+
+  if (result.status === 'success') await fulfill(order);
   return new Response('', { status: 200 });
 };
 ```
+
+Two lines in there matter more than they look:
+
+- **Add the message's details to the saved order; never replace them.** The saved order holds the amount the buyer was asked to pay, and the indexer checks every payment against it. If the order is overwritten with only what the message carries, that amount is gone.
+- **Never move an order backwards.** A "waiting" message that arrives late must not reopen an order that is already paid. `isStatusRegression` makes that check.
+
+`fulfill` gets the whole order, so it knows the product (`order.metadata.productId`) and anything you attached at checkout, such as the buyer's email.
 
 Make `fulfill` safe to run twice for the same order. The indexer can resend a message after a restart, and every payment system in the world does the same.
 
@@ -265,6 +294,32 @@ Desktop and phone wallets open it with the payment filled in. Put the same text 
 
 Each checkout uses the next address from your key, whether the buyer pays or not. So a run of unpaid checkouts leaves a run of empty addresses. Some phone wallets stop looking after 20 empty addresses in a row (this is called the **gap limit**), and would not show money that arrived further along. If you restore your recovery words in another wallet and payments seem to be missing, raise that wallet's gap limit, or restore them in Bitcoin Core, which looks much further ahead.
 
+## Moving or rebuilding the shop wallet
+
+Never make a new shop wallet from the same descriptor and start taking orders. A fresh wallet starts counting addresses from the beginning again, so new buyers would be given addresses that old orders already used. If an old buyer then paid late, their money would land on a stranger's new order.
+
+Restore the backup from step 4 instead:
+
+```bash
+bitcoin-cli -named restorewallet wallet_name=shop backup_file=/path/to/backups/shop.bak load_on_startup=true
+```
+
+The restored wallet carries on from the last address it handed out, and it still knows which order each old address belongs to, so a late payment on an old order is still matched.
+
+If the backup is lost, you can still avoid reusing addresses. On the old server, if you can reach it, run `bitcoin-cli -rpcwallet=shop listdescriptors` and note `next_index` on the descriptor. Then import with that number added, and with the end of `range` at least 1,000 above it (the node refuses a `next_index` outside the range):
+
+```bash
+bitcoin-cli -rpcwallet=shop importdescriptors '[{
+  "desc": "wpkh([1027cc8d/84h/0h/0h]xpub6C.../0/*)#a6glsrp3",
+  "active": true,
+  "range": [0, 2499],
+  "next_index": 1500,
+  "timestamp": "now"
+}]'
+```
+
+If you cannot reach the old server, pick a number comfortably above the number of checkouts you have ever had. Skipping addresses costs nothing; reusing them does. Without the backup, the new wallet no longer knows which order each old address belonged to, so a late payment to an old order will not be matched automatically. Check those by hand in the wallet you made in step 3.
+
 ## Bigger setups
 
 - **One person.** One server runs the node and the indexer. Messages go out to your website host.
@@ -273,14 +328,15 @@ Each checkout uses the next address from your key, whether the buyer pays or not
 
 ## If something goes wrong
 
-| What you see                                                   | What it means and what to do                                                                                                                          |
-| -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `node refused getnewaddress (401)`                             | The name or password does not match `rpcuser` and `rpcpassword` in `bitcoin.conf`.                                                                    |
-| `Requested wallet does not exist or is not loaded`             | `BITCOIN_WALLET` names a wallet the node has not opened. Run `bitcoin-cli loadwallet shop`, and make sure you created it with `load_on_startup=true`. |
-| `Error: This wallet has no available keys`                     | The descriptor was not imported, or was imported without `"active": true`. Repeat step 4.                                                             |
-| Payments sit at 0 confirmations for a long time                | The buyer paid a low fee, or the node has fallen behind. Compare `bitcoin-cli getblockcount` with a public block explorer.                            |
-| `money reached an expired invoice outside the lookback window` | The indexer was down longer than `scanLookbackBlocks` covers. Raise it and restart the indexer, and the order settles on the next check.              |
-| Old unpaid orders never become "failed"                        | Your database has no `listPending`. Add it, or accept that unpaid orders stay marked as waiting.                                                      |
+| What you see                                                     | What it means and what to do                                                                                                                                                                                                                              |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `node refused getnewaddress (401)`                               | The name or password does not match `rpcuser` and `rpcpassword` in `bitcoin.conf`.                                                                                                                                                                        |
+| `Requested wallet does not exist or is not loaded`               | `BITCOIN_WALLET` names a wallet the node has not opened. Run `bitcoin-cli loadwallet shop`, and make sure you created it with `load_on_startup=true`.                                                                                                     |
+| `Error: This wallet has no available keys`                       | The descriptor was not imported, or was imported without `"active": true`. Repeat step 4.                                                                                                                                                                 |
+| Payments sit at 0 confirmations for a long time                  | The buyer paid a low fee, or the node has fallen behind. Compare `bitcoin-cli getblockcount` with a public block explorer.                                                                                                                                |
+| `money reached an expired invoice outside the lookback window`   | The indexer was down longer than `scanLookbackBlocks` covers. Raise it and restart the indexer, and the order settles on the next check.                                                                                                                  |
+| `the stored payment has no atomicAmount … refusing to settle it` | Your webhook code replaced the saved order instead of adding to it, and the amount the buyer owes is gone. The indexer will not guess. Fix the webhook code as in step 6, then put `atomicAmount` back on the order from your logs or the checkout reply. |
+| Old unpaid orders never become "failed"                          | Your database has no `listPending`. Add it, or accept that unpaid orders stay marked as waiting.                                                                                                                                                          |
 
 ## Trying it without real money
 

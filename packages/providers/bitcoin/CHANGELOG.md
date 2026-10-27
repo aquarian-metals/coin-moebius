@@ -1,5 +1,15 @@
 # @aquarian-metals/coin-moebius-bitcoin
 
+## Unreleased
+
+### Patch Changes
+
+- **Never settles an order whose stored amount is missing.** A missing `atomicAmount` used to read as zero, so any payment counted as paid in full. The indexer now refuses and reports why.
+- **A confirmed, full payment settles even while another output to the same address is unconfirmed.** One unconfirmed output can no longer hold a paid order open.
+- **The verifier refuses a message whose `provider` is not `bitcoin`**, so a secret reused across indexers cannot pass another provider's message off as a Bitcoin payment.
+- **Node calls and webhook deliveries time out after 30 seconds** (`requestTimeoutMs`).
+- **Webhooks name the product** (`productId` on the payload and on the event's metadata).
+
 ## 4.4.0
 
 ### Minor Changes

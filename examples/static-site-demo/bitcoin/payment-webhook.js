@@ -38,14 +38,20 @@ export default async (req) => {
 			return new Response('', { status: 200 });
 		}
 
-		await myStore.upsert({
+		// Merge, never replace. The stored order holds the amount the buyer was
+		// asked to pay, and the indexer checks every payment against it; an
+		// order overwritten with only the event's fields has lost that amount.
+		const order = {
+			...existing,
 			...result,
+			metadata: { ...existing?.metadata, ...result.metadata },
 			createdAt: existing?.createdAt ?? result.timestamp,
 			updatedAt: Date.now(),
-		});
+		};
+		await myStore.upsert(order);
 
 		if (result.status === 'success') {
-			await onPaymentSucceeded(result);
+			await onPaymentSucceeded(order);
 		}
 
 		return new Response('', { status: 200 });
@@ -55,9 +61,10 @@ export default async (req) => {
 	}
 };
 
-async function onPaymentSucceeded(result) {
-	// Replace with your real fulfilment.
+async function onPaymentSucceeded(order) {
+	// Replace with your real fulfilment. `order.metadata.productId` names what
+	// was bought, and anything attached at checkout (an email, say) is here too.
 	console.log(
-		`[payment-webhook] paid: ${result.paymentId} ${result.metadata.receivedAmountBtc} BTC`,
+		`[payment-webhook] paid: ${order.paymentId} ${order.metadata.productId} ${order.metadata.receivedAmountBtc} BTC`,
 	);
 }

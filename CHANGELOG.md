@@ -9,6 +9,19 @@ caret range like `^4.2.0` rolls the whole family forward together.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A Bitcoin payment is never settled when the stored invoice has lost its amount.** The indexer read a missing `atomicAmount` as zero, so any payment counted as paid in full. The guide's webhook handler replaced the stored order with the event, which drops that amount, and a webhook whose reply was lost after the handler saved left the order that way. A dust payment then unlocked the product. The indexer now refuses to settle such an order and reports why, and the guide's and the example's handlers merge the event into the order instead of replacing it.
+- **A confirmed, full Bitcoin payment settles even while another output to the same address is unconfirmed.** Settlement waited for every output, so a tiny low-fee payment from anyone who could see the address held a paid order open indefinitely. A full amount that has already confirmed now settles; a short payment still waits for every output before it is called `partial`.
+- **The Bitcoin verifier refuses a message for another provider.** A signature only proves who signed, so a secret reused across indexers let another provider's message verify as a Bitcoin payment.
+- **The Bitcoin indexer gives up on a node call or webhook delivery after 30 seconds** (`requestTimeoutMs`). A server that never answered held the single tick for minutes per attempt.
+
+### Changed
+
+- **Bitcoin webhooks name the product** (`productId` on the payload and on the event's metadata), and the guide's webhook handler hands `fulfill` the whole stored order, so fulfillment knows what was bought and anything attached at checkout.
+- **The Bitcoin guide covers moving or rebuilding the shop wallet.** A wallet made fresh from the same descriptor starts its addresses over and hands old orders' addresses to new buyers. The guide now says to back the shop wallet up and restore it, or to import with `next_index` past the last address used.
+- **Safer Bitcoin deployment files.** The Docker Compose file gives the node a hashed `rpcauth` instead of a plain password on its command line, pins the indexer's packages and skips their install scripts, and mounts only the indexer's own files. The systemd unit runs the indexer as its own user, not the node's, and no longer fails to start when its log folder is missing. The guide's webhook handler never moves a paid order back to waiting.
+
 ## [4.4.0] — 2026-10-27
 
 ### Added

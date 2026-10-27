@@ -592,6 +592,21 @@ describe('createBitcoinVerifier', () => {
 			/unsupported body type/,
 		);
 	});
+
+	it("rejects another provider's message signed with a reused secret", async () => {
+		const foreign = { ...makeWebhookPayload(), provider: 'zano' };
+		const sig = await computeBitcoinSignature(JSON.stringify(foreign), SECRET);
+		await expect(makeVerifier().verify(foreign, { 'x-bitcoin-sig': sig })).rejects.toThrow(
+			/not a bitcoin payment/,
+		);
+	});
+
+	it('passes the product id through to fulfillment', async () => {
+		const payload = makeWebhookPayload({ productId: 'ebook-42' });
+		const sig = await computeBitcoinSignature(JSON.stringify(payload), SECRET);
+		const result = asPayment(await makeVerifier().verify(payload, { 'x-bitcoin-sig': sig }));
+		expect(result!.metadata.productId).toBe('ebook-42');
+	});
 });
 
 describe('createBitcoinIndexer', () => {
@@ -1157,6 +1172,141 @@ describe('createBitcoinIndexer', () => {
 			.map((c) => JSON.parse(c.body) as BitcoinWebhookPayload)
 			.filter((pl) => pl.paymentId === ctx.first.paymentId && pl.status === 'success');
 		expect(settled).toHaveLength(1);
+	});
+});
+
+/**
+ * Attacks found in review, held down here so they cannot come back.
+ */
+describe('adversarial review findings', () => {
+	async function shop(opts: { requiredConfirmations?: number } = {}) {
+		const node = makeNode();
+		const store = createMemoryStore();
+		const webhookCalls: { body: string; headers: Record<string, string> }[] = [];
+		const create = createBitcoinCreator({
+			rpcUrl: RPC_URL,
+			wallet: WALLET,
+			store,
+			fetcher: node.fetcher,
+		});
+		const invoice = await create({ productId: 'ebook-42', amount: 0.0002, currency: 'BTC' });
+		const logger = silentLogger();
+		const indexer = createBitcoinIndexer({
+			rpcUrl: RPC_URL,
+			wallet: WALLET,
+			store,
+			webhookUrl: WEBHOOK_URL,
+			hmacSecret: SECRET,
+			requiredConfirmations: opts.requiredConfirmations ?? 1,
+			fetcher: withWebhookCapture(node.fetcher, webhookCalls),
+			logger,
+		});
+		const pay = (amount: number, height: number, hash: string) =>
+			node.state.txs.push({ txid: txid(hash), vout: 0, address: invoice.address, amount, height });
+		return { node, store, webhookCalls, invoice, indexer, pay };
+	}
+
+	it('settles an order whose store hands the amount back as a number', async () => {
+		const ctx = await shop();
+		const record = (await ctx.store.get(ctx.invoice.paymentId))!;
+		await ctx.store.upsert({ ...record, metadata: { ...record.metadata, atomicAmount: 20000 } });
+		ctx.pay(0.0002, ctx.node.state.height, 'full');
+
+		await ctx.indexer.tick();
+		expect((await ctx.store.get(ctx.invoice.paymentId))?.status).toBe('success');
+	});
+
+	it('keeps the invoice amount when a failed event wrote 0 over the record', async () => {
+		const ctx = await shop();
+		const record = (await ctx.store.get(ctx.invoice.paymentId))!;
+		await ctx.store.upsert({ ...record, status: 'failed', amount: 0 });
+		ctx.pay(0.0002, ctx.node.state.height, 'late');
+
+		await ctx.indexer.tick();
+		const settled = JSON.parse(ctx.webhookCalls.at(-1)!.body) as BitcoinWebhookPayload;
+		expect(settled.status).toBe('success');
+		expect(settled.invoiceAmount).toBe(0.0002);
+		expect((await ctx.store.get(ctx.invoice.paymentId))?.amount).toBe(0.0002);
+	});
+
+	it('never settles dust as paid when the stored invoice amount was overwritten', async () => {
+		const ctx = await shop();
+		const record = (await ctx.store.get(ctx.invoice.paymentId))!;
+		await ctx.store.upsert({
+			...record,
+			metadata: { address: ctx.invoice.address, txHash: null, confirmations: 0 },
+		});
+		ctx.pay(0.00001, ctx.node.state.height, 'dust');
+
+		const result = await ctx.indexer.tick();
+
+		expect((await ctx.store.get(ctx.invoice.paymentId))?.status).toBe('pending');
+		expect(
+			ctx.webhookCalls.map((c) => (JSON.parse(c.body) as BitcoinWebhookPayload).status),
+		).not.toContain('success');
+		expect(result.errors.join(' ')).toContain('no atomicAmount');
+	});
+
+	it('settles a confirmed full payment even while a later output is still unconfirmed', async () => {
+		const ctx = await shop();
+		ctx.pay(0.0002, ctx.node.state.height, 'full');
+		ctx.pay(0.0000033, 0, 'stuck-dust');
+
+		await ctx.indexer.tick();
+
+		expect((await ctx.store.get(ctx.invoice.paymentId))?.status).toBe('success');
+		const settled = JSON.parse(ctx.webhookCalls.at(-1)!.body) as BitcoinWebhookPayload;
+		expect(settled.status).toBe('success');
+		expect(settled.receivedAmountAtomic).toBe('20000');
+		expect(settled.confirmations).toBe(1);
+	});
+
+	it('still waits on an unconfirmed output before calling a short payment partial', async () => {
+		const ctx = await shop();
+		ctx.pay(0.0001, ctx.node.state.height, 'half');
+		ctx.pay(0.0001, 0, 'other-half');
+
+		await ctx.indexer.tick();
+		expect((await ctx.store.get(ctx.invoice.paymentId))?.status).toBe('pending');
+
+		ctx.node.state.txs[1].height = ctx.node.state.height + 1;
+		ctx.node.state.height += 1;
+		await ctx.indexer.tick();
+		expect((await ctx.store.get(ctx.invoice.paymentId))?.status).toBe('success');
+	});
+
+	it('names the product on every webhook it sends', async () => {
+		const ctx = await shop();
+		ctx.pay(0.0002, ctx.node.state.height, 'full');
+		await ctx.indexer.tick();
+		const payload = JSON.parse(ctx.webhookCalls.at(-1)!.body) as BitcoinWebhookPayload;
+		expect(payload.productId).toBe('ebook-42');
+	});
+
+	it('gives up on a webhook endpoint that never answers instead of stalling the tick', async () => {
+		const ctx = await shop();
+		ctx.pay(0.0002, ctx.node.state.height, 'full');
+		const hanging: typeof fetch = async (input, init) => {
+			if (urlOf(input) !== WEBHOOK_URL) return ctx.node.fetcher(input, init);
+			return new Promise<Response>((_resolve, reject) => {
+				init?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+			});
+		};
+		const indexer = createBitcoinIndexer({
+			rpcUrl: RPC_URL,
+			wallet: WALLET,
+			store: ctx.store,
+			webhookUrl: WEBHOOK_URL,
+			hmacSecret: SECRET,
+			fetcher: hanging,
+			requestTimeoutMs: 20,
+			webhookRetry: { maxAttempts: 1, initialBackoffMs: 0 },
+			logger: silentLogger(),
+		});
+
+		const result = await indexer.tick();
+		expect(result.errors.length).toBe(1);
+		expect((await ctx.store.get(ctx.invoice.paymentId))?.status).toBe('pending');
 	});
 });
 
