@@ -9,6 +9,8 @@ caret range like `^4.2.0` rolls the whole family forward together.
 
 ## [Unreleased]
 
+## [4.4.1] — 2026-10-27
+
 ### Fixed
 
 - **A Bitcoin payment is never settled when the stored invoice has lost its amount.** The indexer read a missing `atomicAmount` as zero, so any payment counted as paid in full. The guide's webhook handler replaced the stored order with the event, which drops that amount, and a webhook whose reply was lost after the handler saved left the order that way. A dust payment then unlocked the product. The indexer now refuses to settle such an order and reports why, and the guide's and the example's handlers merge the event into the order instead of replacing it.
