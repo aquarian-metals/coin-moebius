@@ -2,7 +2,8 @@
  * Mounts the in-process `dev-api/*.js` handlers as Vite dev-server
  * middleware so `npm run dev` runs the whole stack — frontend, checkout
  * endpoints, webhook receiver, status reader, and (in mock mode) the
- * Monero and Zano indexers — inside one process with shared state.
+ * Monero and Zano indexers, plus the Bitcoin indexer — inside one process
+ * with shared state.
  *
  * Each handler corresponds 1:1 to "what you'd deploy as a serverless
  * function" in production. The plugin is the demo-only glue; the
@@ -41,6 +42,13 @@ export default function devApiPlugin() {
 						await handleZanoCheckout(req, res);
 						return;
 					}
+					if (req.method === 'POST' && url.startsWith('/api/checkout/bitcoin')) {
+						const { handleBitcoinCheckout } = await import('./dev-api/checkout-bitcoin.js');
+						const { ensureBitcoinIndexerRunning } = await import('./dev-api/bitcoin-indexer.js');
+						ensureBitcoinIndexerRunning();
+						await handleBitcoinCheckout(req, res);
+						return;
+					}
 					if (req.method === 'POST' && url.startsWith('/api/payment-webhook')) {
 						const { handlePaymentWebhook } = await import('./dev-api/payment-webhook.js');
 						await handlePaymentWebhook(req, res);
@@ -59,6 +67,11 @@ export default function devApiPlugin() {
 					if (req.method === 'POST' && url.startsWith('/api/mock/pay-zano')) {
 						const { handleZanoMockPay } = await import('./dev-api/zano-indexer.js');
 						await handleZanoMockPay(req, res);
+						return;
+					}
+					if (req.method === 'POST' && url.startsWith('/api/regtest/pay-bitcoin')) {
+						const { handleBitcoinRegtestPay } = await import('./dev-api/bitcoin-indexer.js');
+						await handleBitcoinRegtestPay(req, res);
 						return;
 					}
 				} catch (err) {

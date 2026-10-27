@@ -9,6 +9,10 @@ caret range like `^4.2.0` rolls the whole family forward together.
 
 ## [Unreleased]
 
+### Added
+
+- **`@aquarian-metals/coin-moebius-bitcoin`**, the self-hosted Bitcoin provider. No third-party gateway, no custodial keys. The merchant runs Bitcoin Core with a watch-only descriptor wallet and a small indexer; the package supplies the browser provider, the server-side creator (a fresh address per checkout, labeled with its payment id in the wallet), the webhook verifier, and the indexer factory (`.tick()`, `.start()`, `.status()`). Speaks `bitcoind`'s JSON-RPC with HTTP Basic auth. Settles on one confirmation by default, reports confirmation progress as `pending` webhooks, never counts a transaction the node reports as conflicted, and asks the node directly before failing an expired invoice, so money that landed outside the lookback window is never reported missing. Guide in `docs/self-hosted-bitcoin.md`, with a regtest recipe for trying it without real money; copy-paste deployment in `examples/static-site-demo/bitcoin/`.
+
 ## [4.3.1] — 2026-09-15
 
 ### Fixed

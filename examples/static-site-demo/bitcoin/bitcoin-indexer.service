@@ -1,0 +1,50 @@
+# systemd unit for the Coin Moebius Bitcoin indexer.
+#
+# Install: copy to /etc/systemd/system/, edit the paths and env, then:
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now bitcoin-indexer
+#   sudo journalctl -u bitcoin-indexer -f
+#
+# Restart-on-failure handles the case where bitcoind is temporarily
+# unreachable on indexer startup; the indexer is catch-up by design, so
+# brief crashes don't lose payments.
+
+[Unit]
+Description=Coin Moebius Bitcoin indexer
+After=network-online.target bitcoind.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=bitcoin
+Group=bitcoin
+WorkingDirectory=/opt/coin-moebius
+ExecStart=/usr/bin/node /opt/coin-moebius/indexer.js
+Restart=on-failure
+RestartSec=5
+
+# Hardening: the indexer reads the node's RPC and writes to outbound HTTPS
+# only. Lock everything else down.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log/coin-moebius
+
+# Env. Edit these. The two secrets belong in the EnvironmentFile, which
+# should be readable by the bitcoin user only.
+Environment=BITCOIN_RPC_URL=http://127.0.0.1:8332
+Environment=BITCOIN_WALLET=shop
+Environment=BITCOIN_WEBHOOK_URL=https://your-site.example/api/payment-webhook
+Environment=BITCOIN_REQUIRED_CONFIRMATIONS=1
+Environment=BITCOIN_POLL_INTERVAL_MS=30000
+EnvironmentFile=/etc/coin-moebius/bitcoin-indexer.env
+
+# Stop sends SIGTERM; indexer.js handles it and clears the polling
+# interval. Give it a few seconds to drain.
+TimeoutStopSec=10
+KillMode=mixed
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target

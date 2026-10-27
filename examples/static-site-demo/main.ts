@@ -1,4 +1,5 @@
 import { createPaymentManager } from '@aquarian-metals/coin-moebius';
+import { createBitcoinProvider } from '@aquarian-metals/coin-moebius-bitcoin';
 import createCryptomusProvider from '@aquarian-metals/coin-moebius-cryptomus';
 import { createMoneroProvider } from '@aquarian-metals/coin-moebius-monero';
 import createStripeProvider from '@aquarian-metals/coin-moebius-stripe';
@@ -13,6 +14,7 @@ const payments = createPaymentManager({
 		createMoneroProvider(),
 		createZanoProvider(),
 		createZanoProvider({ id: 'fusd', name: 'Freedom Dollar', assetId: FREEDOM_DOLLAR_ASSET_ID }),
+		createBitcoinProvider(),
 	],
 });
 
@@ -46,6 +48,11 @@ payments.onPending((result) => {
 		if (ZANO_PROVIDER_IDS.has(result.provider)) {
 			document.getElementById('mock-pay-btn')?.addEventListener('click', () => {
 				void simulateMockPayment(result.paymentId, '/api/mock/pay-zano');
+			});
+		}
+		if (result.provider === 'bitcoin') {
+			document.getElementById('mock-pay-btn')?.addEventListener('click', () => {
+				void simulateMockPayment(result.paymentId, '/api/regtest/pay-bitcoin');
 			});
 		}
 	}
@@ -107,6 +114,16 @@ document.getElementById('fusd-tile')?.addEventListener('click', () => {
 	});
 });
 
+document.getElementById('bitcoin-tile')?.addEventListener('click', () => {
+	payments.initiate({
+		providerId: 'bitcoin',
+		productId: 'jamstack-guide',
+		amount: 0.0002,
+		currency: 'BTC',
+		metadata: { email: 'buyer@example.com' },
+	});
+});
+
 function startStatusPolling(paymentId: string) {
 	payments.subscribeToStatus(
 		paymentId,
@@ -154,6 +171,16 @@ function renderPendingHtml(result: {
 			<div class="kv"><span>To</span><code>${address}</code></div>
 			<div class="kv"><span>zano: link</span><code>${uri}</code></div>
 			<button type="button" id="mock-pay-btn">Simulate buyer payment (mock mode)</button>`;
+	}
+	if (result.provider === 'bitcoin') {
+		const address = readMetaString(result.metadata, 'address');
+		const btcAmount = readMetaString(result.metadata, 'btcAmount');
+		const uri = readMetaString(result.metadata, 'uri');
+		return `${header}
+			<div class="kv"><span>Send exactly</span><code>${btcAmount} BTC</code></div>
+			<div class="kv"><span>To</span><code>${address}</code></div>
+			<div class="kv"><span>bitcoin: link</span><code>${uri}</code></div>
+			<button type="button" id="mock-pay-btn">Pay from the regtest buyer wallet (regtest mode)</button>`;
 	}
 	const qr = result.metadata.qr;
 	const qrImg = typeof qr === 'string' ? `<img src="${qr}" width="200" alt="" />` : '';

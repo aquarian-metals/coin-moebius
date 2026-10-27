@@ -37,6 +37,7 @@ Every provider is its own package. Install only what you need. Each package ship
 | Cryptomus            | `@aquarian-metals/coin-moebius-cryptomus`         | Crypto (geo-restricted in the US)                           |
 | Monero               | `@aquarian-metals/coin-moebius-monero`            | Crypto (self-hosted node, no third-party gateway)           |
 | Zano                 | `@aquarian-metals/coin-moebius-zano`              | Crypto (self-hosted node; ZANO and Freedom Dollar)          |
+| Bitcoin              | `@aquarian-metals/coin-moebius-bitcoin`           | Crypto (self-hosted Bitcoin Core, watch-only wallet)        |
 | Manual / pay by mail | `@aquarian-metals/coin-moebius-manual`            | Off-rail confirmations (cash, check, Goldbacks, anything)   |
 
 Two foundation packages back them:

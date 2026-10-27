@@ -57,3 +57,33 @@ export function isZanoMockEnabled() {
 export function getZanoHmacSecret() {
 	return process.env.ZANO_HMAC_SECRET ?? 'demo-zano-hmac-secret-not-for-production';
 }
+
+/**
+ * Bitcoin needs no simulator: Bitcoin Core's regtest mode is a private,
+ * empty chain on this machine, so the demo talks to a real node and real
+ * transactions. `BITCOIN_REGTEST=true` fills in regtest's default port and
+ * turns on the `/api/regtest/pay-bitcoin` helper.
+ */
+export function isBitcoinRegtestEnabled() {
+	return process.env.BITCOIN_REGTEST === 'true';
+}
+
+export function getBitcoinRpcConfig() {
+	const fallbackUrl = isBitcoinRegtestEnabled() ? 'http://127.0.0.1:18443' : '';
+	const rpcUrl = process.env.BITCOIN_RPC_URL ?? fallbackUrl;
+	if (!rpcUrl) return null;
+	return {
+		rpcUrl,
+		wallet: process.env.BITCOIN_WALLET ?? 'shop',
+		rpcUser: process.env.BITCOIN_RPC_USER,
+		rpcPassword: process.env.BITCOIN_RPC_PASSWORD,
+	};
+}
+
+/**
+ * Shared HMAC secret used by the Bitcoin verifier (receiver) and indexer
+ * (sender). Same fallback story as the Monero one above.
+ */
+export function getBitcoinHmacSecret() {
+	return process.env.BITCOIN_HMAC_SECRET ?? 'demo-bitcoin-hmac-secret-not-for-production';
+}

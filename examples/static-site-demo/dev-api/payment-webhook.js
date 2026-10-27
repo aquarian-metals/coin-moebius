@@ -14,11 +14,13 @@
  * every provider (Stripe, NOWPayments, Cryptomus, Monero all resend).
  */
 
+import { createBitcoinVerifier } from '@aquarian-metals/coin-moebius-bitcoin/server';
 import { createCryptomusVerifier } from '@aquarian-metals/coin-moebius-cryptomus/server';
 import { createMoneroVerifier } from '@aquarian-metals/coin-moebius-monero/server';
 import { createStripeVerifier } from '@aquarian-metals/coin-moebius-stripe/server';
 import { createZanoVerifier } from '@aquarian-metals/coin-moebius-zano/server';
 import {
+	getBitcoinHmacSecret,
 	getMoneroHmacSecret,
 	getRegistry,
 	getStore,
@@ -49,6 +51,10 @@ function ensureVerifiersRegistered() {
 	});
 	registerVerifierOnce('zano', () => {
 		const v = createZanoVerifier({ hmacSecret: getZanoHmacSecret() });
+		return v.verify;
+	});
+	registerVerifierOnce('bitcoin', () => {
+		const v = createBitcoinVerifier({ hmacSecret: getBitcoinHmacSecret() });
 		return v.verify;
 	});
 }

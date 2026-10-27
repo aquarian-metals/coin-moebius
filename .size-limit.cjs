@@ -58,6 +58,11 @@ module.exports = [
 		limit: '6 KB',
 	},
 	{
+		name: 'coin-moebius-bitcoin (client)',
+		path: 'packages/providers/bitcoin/dist/index.js',
+		limit: '6 KB',
+	},
+	{
 		name: 'coin-moebius-manual (client)',
 		path: 'packages/providers/manual/dist/index.js',
 		limit: '6 KB',
