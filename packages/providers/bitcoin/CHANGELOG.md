@@ -1,6 +1,6 @@
 # @aquarian-metals/coin-moebius-bitcoin
 
-## Unreleased
+## 4.4.0
 
 ### Minor Changes
 
