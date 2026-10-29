@@ -15,11 +15,13 @@
  */
 
 import { createBitcoinVerifier } from '@aquarian-metals/coin-moebius-bitcoin/server';
+import { createBitcoinCashVerifier } from '@aquarian-metals/coin-moebius-bitcoin-cash/server';
 import { createCryptomusVerifier } from '@aquarian-metals/coin-moebius-cryptomus/server';
 import { createMoneroVerifier } from '@aquarian-metals/coin-moebius-monero/server';
 import { createStripeVerifier } from '@aquarian-metals/coin-moebius-stripe/server';
 import { createZanoVerifier } from '@aquarian-metals/coin-moebius-zano/server';
 import {
+	getBitcoinCashHmacSecret,
 	getBitcoinHmacSecret,
 	getMoneroHmacSecret,
 	getRegistry,
@@ -55,6 +57,10 @@ function ensureVerifiersRegistered() {
 	});
 	registerVerifierOnce('bitcoin', () => {
 		const v = createBitcoinVerifier({ hmacSecret: getBitcoinHmacSecret() });
+		return v.verify;
+	});
+	registerVerifierOnce('bitcoin-cash', () => {
+		const v = createBitcoinCashVerifier({ hmacSecret: getBitcoinCashHmacSecret() });
 		return v.verify;
 	});
 }

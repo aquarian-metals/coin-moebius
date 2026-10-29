@@ -1,0 +1,77 @@
+# Docker compose bundle for self-hosted Bitcoin Cash with Coin Moebius.
+#
+# Disclaimer: this file is a starting point, not a maintained artifact.
+# `zquestz/bitcoin-cash-node` is a community image, not published by the
+# Bitcoin Cash Node project. Pin the tag you have checked, and move it
+# forward yourself when Bitcoin Cash Node ships a release or a security
+# fix, and always before a network upgrade. Coin Moebius does not publish
+# or maintain a turnkey image.
+#
+# Before first boot:
+#   1. Make the RPC password and its hashed form. The node only ever sees
+#      the hash, so the password never appears in `ps` or `docker inspect`
+#      for the node:
+#        PASS=$(openssl rand -hex 32); SALT=$(openssl rand -hex 16)
+#        HASH=$(printf %s "$PASS" | openssl dgst -sha256 -hmac "$SALT" | awk '{print $NF}')
+#        echo "BCH_RPC_PASSWORD=$PASS" >> .env
+#        echo "BCH_RPCAUTH='shop:$SALT\$$HASH'" >> .env
+#      Keep the single quotes around BCH_RPCAUTH: its `$` must not be
+#      read as a variable.
+#   2. Create the node's settings file before the first start:
+#        mkdir -p bitcoin-cash-data && echo printtoconsole=1 > bitcoin-cash-data/bitcoin.conf
+#      The image writes its own settings file when there is none, and that
+#      one lets in the user `bitcoin` with the password `password` from any
+#      address. Yours stops it from being written.
+#   3. Fill in the other .env values referenced below.
+#   4. docker compose up -d bitcoind
+#   5. Wait for the node to sync: docker compose exec bitcoind bitcoin-cli
+#      -rpcuser=shop -rpcpassword=... getblockchaininfo
+#   6. Create the watch-only wallet, as in docs/self-hosted-bitcoin-cash.md,
+#      then add `wallet=shop` to bitcoin-cash-data/bitcoin.conf.
+#   7. docker compose up -d indexer
+#   8. Watch logs: docker compose logs -f indexer
+#
+# With -prune the node keeps only the newest block files, but the first
+# sync still downloads and checks the whole chain. Plan accordingly.
+
+services:
+  bitcoind:
+    image: zquestz/bitcoin-cash-node:29.2.0
+    container_name: bitcoin-cash-node
+    restart: unless-stopped
+    volumes:
+      - ./bitcoin-cash-data:/data
+    ports:
+      - "8333:8333" # P2P
+    command:
+      - bitcoind
+      - -server=1
+      - -prune=550
+      - -rpcbind=0.0.0.0
+      - -rpcallowip=172.16.0.0/12
+      - -rpcauth=${BCH_RPCAUTH:?BCH_RPCAUTH must be set in .env}
+
+  indexer:
+    image: node:lts-alpine
+    container_name: bitcoin-cash-indexer
+    restart: unless-stopped
+    depends_on:
+      - bitcoind
+    working_dir: /app
+    # Only the indexer's own files, read-only. Never mount this whole folder:
+    # it holds ./bitcoin-cash-data, the node's wallets.
+    volumes:
+      - ./indexer.js:/app/indexer.js:ro
+      - ./_store.js:/app/_store.js:ro
+    # Exact versions, and no install scripts, so a restart never pulls in code
+    # you have not chosen. Move the versions forward yourself.
+    command: sh -c "npm install --no-save --ignore-scripts @aquarian-metals/coin-moebius-bitcoin-cash@4.5.0 @aquarian-metals/coin-moebius-server@4.5.0 && node indexer.js"
+    environment:
+      BCH_RPC_URL: http://bitcoind:8332
+      BCH_WALLET: shop
+      BCH_RPC_USER: shop
+      BCH_RPC_PASSWORD: ${BCH_RPC_PASSWORD:?BCH_RPC_PASSWORD must be set in .env}
+      BCH_WEBHOOK_URL: ${BCH_WEBHOOK_URL:?BCH_WEBHOOK_URL must be set in .env}
+      BCH_HMAC_SECRET: ${BCH_HMAC_SECRET:?BCH_HMAC_SECRET must be set in .env}
+      BCH_REQUIRED_CONFIRMATIONS: 6
+      BCH_POLL_INTERVAL_MS: 30000

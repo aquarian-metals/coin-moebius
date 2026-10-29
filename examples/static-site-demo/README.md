@@ -1,8 +1,8 @@
 # Coin Moebius — static-site demo
 
-A working, locally-runnable demo of the SDK against five providers: Stripe (hosted checkout), Cryptomus (hosted crypto gateway), self-hosted Monero, self-hosted Zano (ZANO and Freedom Dollar), and self-hosted Bitcoin.
+A working, locally-runnable demo of the SDK against six providers: Stripe (hosted checkout), Cryptomus (hosted crypto gateway), self-hosted Monero, self-hosted Zano (ZANO and Freedom Dollar), self-hosted Bitcoin, and self-hosted Bitcoin Cash.
 
-The Stripe and Cryptomus integrations talk to their real APIs (so you'll need test keys to exercise them end-to-end). The Monero and Zano integrations run entirely offline by default through in-process mocks of `monero-wallet-rpc` and `simplewallet`; point either at a real wallet by toggling one env var. The Bitcoin integration talks to a real Bitcoin Core node; run one in regtest mode to try it locally.
+The Stripe and Cryptomus integrations talk to their real APIs (so you'll need test keys to exercise them end-to-end). The Monero and Zano integrations run entirely offline by default through in-process mocks of `monero-wallet-rpc` and `simplewallet`; point either at a real wallet by toggling one env var. The Bitcoin integration talks to a real Bitcoin Core node; run one in regtest mode to try it locally. The Bitcoin Cash integration does the same with a real Bitcoin Cash Node.
 
 > **NOWPayments is not in this demo.** It's redirect-based (like Stripe) and requires webhook forwarding back to localhost, which adds friction without teaching anything the Stripe tile doesn't already cover. See `packages/providers/nowpayments/README.md` for integration patterns.
 
@@ -20,6 +20,7 @@ The Stripe and Cryptomus integrations talk to their real APIs (so you'll need te
 │       POST /api/mock/pay-monero   (mock mode only)                 │
 │       POST /api/mock/pay-zano     (mock mode only)                 │
 │       POST /api/regtest/pay-bitcoin (regtest mode only)            │
+│       POST /api/regtest/pay-bitcoin-cash (regtest mode only)       │
 │                  │                                                 │
 │                  ▼                                                 │
 │   vite-plugin-dev-api ──► dev-api/*.js handlers                    │
@@ -108,6 +109,32 @@ Open `http://localhost:5173`, click **Pay with Bitcoin (self-hosted)**, and you'
 
 Point at any other node with `BITCOIN_RPC_URL` and leave `BITCOIN_REGTEST` unset. The buyer helper is regtest-only.
 
+## Run the Bitcoin Cash flow on regtest
+
+Bitcoin Cash Node's regtest mode starts an empty, private chain on your machine. You need Bitcoin Cash Node installed, from [bitcoincashnode.org](https://bitcoincashnode.org).
+
+```bash
+bitcoind -regtest -daemon -rpcuser=demo -rpcpassword=demo
+alias bch='bitcoin-cli -regtest -rpcuser=demo -rpcpassword=demo'
+
+bch createwallet buyer
+bch -rpcwallet=buyer generatetoaddress 101 $(bch -rpcwallet=buyer getnewaddress)   # test coins for the buyer
+bch -named createwallet wallet_name=shop disable_private_keys=true blank=true
+```
+
+Then:
+
+```bash
+cd examples/static-site-demo
+BCH_REGTEST=true BCH_RPC_USER=demo BCH_RPC_PASSWORD=demo npm run dev
+```
+
+With `BCH_REGTEST=true` and no `BCH_XPUB`, the demo uses the public key of a well-known test seed, so never send real money to its addresses.
+
+Open `http://localhost:5173`, click **Pay with Bitcoin Cash (self-hosted)**, and you'll see a fresh `bchreg:` address that the watch-only `shop` wallet now watches, the exact BCH amount, and the wallet link. Click **Pay from the regtest buyer wallet** to send that amount from the `buyer` wallet and mine six blocks; the in-process indexer ticks, fires the HMAC-signed webhook to `/api/payment-webhook/bitcoin-cash`, and the status polling loop flips the UI to **Payment confirmed**.
+
+Point at any other node with `BCH_RPC_URL` and `BCH_XPUB`, and leave `BCH_REGTEST` unset. The buyer helper is regtest-only.
+
 ## Run the Stripe flow
 
 ```bash
@@ -134,26 +161,29 @@ Cryptomus posts the webhook to a public URL, so you'll need ngrok / cloudflared 
 
 ## Files
 
-| Path                                       | What it is                                                                                |
-| ------------------------------------------ | ----------------------------------------------------------------------------------------- |
-| `index.html`, `main.ts`                    | The browser side.                                                                         |
-| `vite.config.js`, `vite-plugin-dev-api.js` | Vite config + plugin that mounts `dev-api/*.js` as middleware.                            |
-| `dev-api/_shared.js`                       | Process-wide singletons (store + verifier registry).                                      |
-| `dev-api/checkout-stripe.js`               | `POST /api/checkout/stripe` — create a Stripe Checkout Session.                           |
-| `dev-api/checkout-cryptomus.js`            | `POST /api/checkout/cryptomus` — create a Cryptomus invoice.                              |
-| `dev-api/checkout-monero.js`               | `POST /api/checkout/monero` — mint a Monero subaddress.                                   |
-| `dev-api/checkout-zano.js`                 | `POST /api/checkout/zano` — mint a Zano integrated address, in ZANO or fUSD.              |
-| `dev-api/payment-webhook.js`               | `POST /api/payment-webhook/:provider` — dispatch to the verifier named in the path.       |
-| `dev-api/payment-status.js`                | `GET /api/payment-status` — read-through to the store.                                    |
-| `dev-api/monero-indexer.js`                | Boots `createMoneroIndexer`. Also serves `/api/mock/pay-monero` in mock mode.             |
-| `dev-api/mock-wallet-rpc.js`               | In-process simulator for `monero-wallet-rpc`.                                             |
-| `dev-api/zano-indexer.js`                  | Boots `createZanoIndexer`. Also serves `/api/mock/pay-zano` in mock mode.                 |
-| `dev-api/mock-zano-wallet-rpc.js`          | In-process simulator for `simplewallet` in RPC mode.                                      |
-| `monero/`                                  | A separate, real-mode Monero indexer deployment example (systemd unit + Docker Compose).  |
-| `zano/`                                    | A separate, real-mode Zano indexer deployment example (systemd unit + Docker Compose).    |
-| `dev-api/checkout-bitcoin.js`              | `POST /api/checkout/bitcoin` — mint a fresh address from the node's watch-only wallet.    |
-| `dev-api/bitcoin-indexer.js`               | Boots `createBitcoinIndexer`. Also serves `/api/regtest/pay-bitcoin` in regtest mode.     |
-| `bitcoin/`                                 | A separate, real-mode Bitcoin indexer deployment example (systemd unit + Docker Compose). |
+| Path                                       | What it is                                                                                                   |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| `index.html`, `main.ts`                    | The browser side.                                                                                            |
+| `vite.config.js`, `vite-plugin-dev-api.js` | Vite config + plugin that mounts `dev-api/*.js` as middleware.                                               |
+| `dev-api/_shared.js`                       | Process-wide singletons (store + verifier registry).                                                         |
+| `dev-api/checkout-stripe.js`               | `POST /api/checkout/stripe` — create a Stripe Checkout Session.                                              |
+| `dev-api/checkout-cryptomus.js`            | `POST /api/checkout/cryptomus` — create a Cryptomus invoice.                                                 |
+| `dev-api/checkout-monero.js`               | `POST /api/checkout/monero` — mint a Monero subaddress.                                                      |
+| `dev-api/checkout-zano.js`                 | `POST /api/checkout/zano` — mint a Zano integrated address, in ZANO or fUSD.                                 |
+| `dev-api/payment-webhook.js`               | `POST /api/payment-webhook/:provider` — dispatch to the verifier named in the path.                          |
+| `dev-api/payment-status.js`                | `GET /api/payment-status` — read-through to the store.                                                       |
+| `dev-api/monero-indexer.js`                | Boots `createMoneroIndexer`. Also serves `/api/mock/pay-monero` in mock mode.                                |
+| `dev-api/mock-wallet-rpc.js`               | In-process simulator for `monero-wallet-rpc`.                                                                |
+| `dev-api/zano-indexer.js`                  | Boots `createZanoIndexer`. Also serves `/api/mock/pay-zano` in mock mode.                                    |
+| `dev-api/mock-zano-wallet-rpc.js`          | In-process simulator for `simplewallet` in RPC mode.                                                         |
+| `monero/`                                  | A separate, real-mode Monero indexer deployment example (systemd unit + Docker Compose).                     |
+| `zano/`                                    | A separate, real-mode Zano indexer deployment example (systemd unit + Docker Compose).                       |
+| `dev-api/checkout-bitcoin.js`              | `POST /api/checkout/bitcoin` — mint a fresh address from the node's watch-only wallet.                       |
+| `dev-api/bitcoin-indexer.js`               | Boots `createBitcoinIndexer`. Also serves `/api/regtest/pay-bitcoin` in regtest mode.                        |
+| `bitcoin/`                                 | A separate, real-mode Bitcoin indexer deployment example (systemd unit + Docker Compose).                    |
+| `dev-api/checkout-bitcoin-cash.js`         | `POST /api/checkout/bitcoin-cash` — work out a fresh address and have the node's watch-only wallet watch it. |
+| `dev-api/bitcoin-cash-indexer.js`          | Boots `createBitcoinCashIndexer`. Also serves `/api/regtest/pay-bitcoin-cash` in regtest mode.               |
+| `bitcoin-cash/`                            | A separate, real-mode Bitcoin Cash indexer deployment example (systemd unit + Docker Compose).               |
 
 ## Important
 

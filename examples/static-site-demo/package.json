@@ -9,6 +9,7 @@
 	"dependencies": {
 		"@aquarian-metals/coin-moebius": "4.4.1",
 		"@aquarian-metals/coin-moebius-bitcoin": "4.4.1",
+		"@aquarian-metals/coin-moebius-bitcoin-cash": "4.4.1",
 		"@aquarian-metals/coin-moebius-cryptomus": "4.4.1",
 		"@aquarian-metals/coin-moebius-monero": "4.4.1",
 		"@aquarian-metals/coin-moebius-server": "4.4.1",

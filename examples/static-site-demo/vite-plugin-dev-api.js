@@ -42,6 +42,15 @@ export default function devApiPlugin() {
 						await handleZanoCheckout(req, res);
 						return;
 					}
+					if (req.method === 'POST' && url.startsWith('/api/checkout/bitcoin-cash')) {
+						const { handleBitcoinCashCheckout } =
+							await import('./dev-api/checkout-bitcoin-cash.js');
+						const { ensureBitcoinCashIndexerRunning } =
+							await import('./dev-api/bitcoin-cash-indexer.js');
+						ensureBitcoinCashIndexerRunning();
+						await handleBitcoinCashCheckout(req, res);
+						return;
+					}
 					if (req.method === 'POST' && url.startsWith('/api/checkout/bitcoin')) {
 						const { handleBitcoinCheckout } = await import('./dev-api/checkout-bitcoin.js');
 						const { ensureBitcoinIndexerRunning } = await import('./dev-api/bitcoin-indexer.js');
@@ -67,6 +76,12 @@ export default function devApiPlugin() {
 					if (req.method === 'POST' && url.startsWith('/api/mock/pay-zano')) {
 						const { handleZanoMockPay } = await import('./dev-api/zano-indexer.js');
 						await handleZanoMockPay(req, res);
+						return;
+					}
+					if (req.method === 'POST' && url.startsWith('/api/regtest/pay-bitcoin-cash')) {
+						const { handleBitcoinCashRegtestPay } =
+							await import('./dev-api/bitcoin-cash-indexer.js');
+						await handleBitcoinCashRegtestPay(req, res);
 						return;
 					}
 					if (req.method === 'POST' && url.startsWith('/api/regtest/pay-bitcoin')) {

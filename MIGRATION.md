@@ -194,6 +194,16 @@ npm install @aquarian-metals/coin-moebius-bitcoin
 
 See `docs/self-hosted-bitcoin.md` for the self-hosting walkthrough (node, watch-only wallet, the indexer, a regtest recipe) and `examples/static-site-demo/bitcoin/` for copy-paste serverless functions, an indexer, a systemd unit, and a docker-compose recipe. The indexer uses `PaymentStore.listPending` the same way the Zano indexer does.
 
+### 12. New: self-hosted Bitcoin Cash provider (additive)
+
+The new `@aquarian-metals/coin-moebius-bitcoin-cash` package is purely additive. No existing integration changes. If you want it:
+
+```bash
+npm install @aquarian-metals/coin-moebius-bitcoin-cash
+```
+
+See `docs/self-hosted-bitcoin-cash.md` for the self-hosting walkthrough (node, watch-only wallet, the indexer, a regtest recipe) and `examples/static-site-demo/bitcoin-cash/` for copy-paste serverless functions, an indexer, a systemd unit, and a docker-compose recipe. The indexer uses `PaymentStore.listPending` the same way the Zano indexer does.
+
 ### 8. Subscription support (additive)
 
 Each provider's `verify()` now returns a `WebhookEvent` discriminated union instead of a bare `PaymentResult`. The `kind: 'payment'` variant is structurally identical to the old `PaymentResult` shape with an added `kind` discriminator, so most consumers keep working with no change.

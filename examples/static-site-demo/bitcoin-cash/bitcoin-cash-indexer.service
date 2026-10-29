@@ -1,0 +1,55 @@
+# systemd unit for the Coin Moebius Bitcoin Cash indexer.
+#
+# Install: copy to /etc/systemd/system/, edit the paths and env, then:
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now bitcoin-cash-indexer
+#   sudo journalctl -u bitcoin-cash-indexer -f
+#
+# Restart-on-failure handles the case where bitcoind is temporarily
+# unreachable on indexer startup; the indexer is catch-up by design, so
+# brief crashes don't lose payments.
+
+[Unit]
+Description=Coin Moebius Bitcoin Cash indexer
+After=network-online.target bitcoind.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# A user of its own, not the node's `bitcoin` user, so the indexer cannot
+# read the node's data folder or wallets. Create it once:
+#   sudo useradd --system --no-create-home --shell /usr/sbin/nologin coin-moebius
+User=coin-moebius
+Group=coin-moebius
+WorkingDirectory=/opt/coin-moebius
+ExecStart=/usr/bin/node /opt/coin-moebius/indexer.js
+Restart=on-failure
+RestartSec=5
+
+# Hardening: the indexer reads the node's RPC and writes to outbound HTTPS
+# only. Lock everything else down.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+# The leading `-` lets the service start when the folder does not exist yet.
+ReadWritePaths=-/var/log/coin-moebius
+
+# Env. Edit these. The three secrets (BCH_RPC_USER, BCH_RPC_PASSWORD,
+# BCH_HMAC_SECRET) belong in the EnvironmentFile, which should be
+# readable by the coin-moebius user only.
+Environment=BCH_RPC_URL=http://127.0.0.1:8332
+Environment=BCH_WALLET=shop
+Environment=BCH_WEBHOOK_URL=https://your-site.example/api/payment-webhook
+Environment=BCH_REQUIRED_CONFIRMATIONS=6
+Environment=BCH_POLL_INTERVAL_MS=30000
+EnvironmentFile=/etc/coin-moebius/bitcoin-cash-indexer.env
+
+# Stop sends SIGTERM; indexer.js handles it and clears the polling
+# interval. Give it a few seconds to drain.
+TimeoutStopSec=10
+KillMode=mixed
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target

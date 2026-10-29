@@ -1,5 +1,6 @@
 import { createPaymentManager } from '@aquarian-metals/coin-moebius';
 import { createBitcoinProvider } from '@aquarian-metals/coin-moebius-bitcoin';
+import { createBitcoinCashProvider } from '@aquarian-metals/coin-moebius-bitcoin-cash';
 import createCryptomusProvider from '@aquarian-metals/coin-moebius-cryptomus';
 import { createMoneroProvider } from '@aquarian-metals/coin-moebius-monero';
 import createStripeProvider from '@aquarian-metals/coin-moebius-stripe';
@@ -15,6 +16,7 @@ const payments = createPaymentManager({
 		createZanoProvider(),
 		createZanoProvider({ id: 'fusd', name: 'Freedom Dollar', assetId: FREEDOM_DOLLAR_ASSET_ID }),
 		createBitcoinProvider(),
+		createBitcoinCashProvider(),
 	],
 });
 
@@ -53,6 +55,11 @@ payments.onPending((result) => {
 		if (result.provider === 'bitcoin') {
 			document.getElementById('mock-pay-btn')?.addEventListener('click', () => {
 				void simulateMockPayment(result.paymentId, '/api/regtest/pay-bitcoin');
+			});
+		}
+		if (result.provider === 'bitcoin-cash') {
+			document.getElementById('mock-pay-btn')?.addEventListener('click', () => {
+				void simulateMockPayment(result.paymentId, '/api/regtest/pay-bitcoin-cash');
 			});
 		}
 	}
@@ -124,6 +131,16 @@ document.getElementById('bitcoin-tile')?.addEventListener('click', () => {
 	});
 });
 
+document.getElementById('bitcoin-cash-tile')?.addEventListener('click', () => {
+	payments.initiate({
+		providerId: 'bitcoin-cash',
+		productId: 'jamstack-guide',
+		amount: 0.04,
+		currency: 'BCH',
+		metadata: { email: 'buyer@example.com' },
+	});
+});
+
 function startStatusPolling(paymentId: string) {
 	payments.subscribeToStatus(
 		paymentId,
@@ -180,6 +197,16 @@ function renderPendingHtml(result: {
 			<div class="kv"><span>Send exactly</span><code>${btcAmount} BTC</code></div>
 			<div class="kv"><span>To</span><code>${address}</code></div>
 			<div class="kv"><span>bitcoin: link</span><code>${uri}</code></div>
+			<button type="button" id="mock-pay-btn">Pay from the regtest buyer wallet (regtest mode)</button>`;
+	}
+	if (result.provider === 'bitcoin-cash') {
+		const address = readMetaString(result.metadata, 'address');
+		const bchAmount = readMetaString(result.metadata, 'bchAmount');
+		const uri = readMetaString(result.metadata, 'uri');
+		return `${header}
+			<div class="kv"><span>Send exactly</span><code>${bchAmount} BCH</code></div>
+			<div class="kv"><span>To</span><code>${address}</code></div>
+			<div class="kv"><span>Wallet link</span><code>${uri}</code></div>
 			<button type="button" id="mock-pay-btn">Pay from the regtest buyer wallet (regtest mode)</button>`;
 	}
 	const qr = result.metadata.qr;

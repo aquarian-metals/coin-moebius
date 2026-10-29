@@ -15,6 +15,7 @@
 		"packages/providers/monero",
 		"packages/providers/zano",
 		"packages/providers/bitcoin",
+		"packages/providers/bitcoin-cash",
 		"packages/providers/manual",
 		"packages/providers/makepay",
 		"packages/providers/template",

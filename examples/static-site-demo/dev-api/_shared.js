@@ -87,3 +87,28 @@ export function getBitcoinRpcConfig() {
 export function getBitcoinHmacSecret() {
 	return process.env.BITCOIN_HMAC_SECRET ?? 'demo-bitcoin-hmac-secret-not-for-production';
 }
+
+export function isBitcoinCashRegtestEnabled() {
+	return process.env.BCH_REGTEST === 'true';
+}
+
+const REGTEST_XPUB =
+	'xpub6BgCeqf74freGvJ7zV1o7jpQFnrCbbmS5vuMmUcscejL7wVoCGjkwpFPQ7baLNqiRcSszfiQyrj8aNdnxpG8GpFDNFw1K3vF1YHK8kXxeFn';
+
+export function getBitcoinCashConfig() {
+	const regtest = isBitcoinCashRegtestEnabled();
+	const rpcUrl = process.env.BCH_RPC_URL ?? (regtest ? 'http://127.0.0.1:18443' : '');
+	const xpub = process.env.BCH_XPUB ?? (regtest ? REGTEST_XPUB : '');
+	if (!rpcUrl || !xpub) return null;
+	return {
+		rpcUrl,
+		wallet: process.env.BCH_WALLET ?? 'shop',
+		rpcUser: process.env.BCH_RPC_USER,
+		rpcPassword: process.env.BCH_RPC_PASSWORD,
+		xpub,
+	};
+}
+
+export function getBitcoinCashHmacSecret() {
+	return process.env.BCH_HMAC_SECRET ?? 'demo-bitcoin-cash-hmac-secret-not-for-production';
+}
