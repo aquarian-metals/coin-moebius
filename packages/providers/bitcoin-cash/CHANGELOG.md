@@ -1,6 +1,6 @@
 # @aquarian-metals/coin-moebius-bitcoin-cash
 
-## Unreleased
+## 4.5.0
 
 ### Minor Changes
 
