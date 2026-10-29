@@ -1,5 +1,11 @@
 # @aquarian-metals/coin-moebius-bitcoin-cash
 
+## 4.5.1
+
+### Patch Changes
+
+- **The server entry loads its key library only when the creator first hands out an address.** The library compiles its hashing and key code as WebAssembly the moment it is imported, and some JavaScript runtimes refuse WebAssembly compiled at run time, so a program that only verifies webhooks could not import the entry at all. The verifier and `computeBitcoinCashSignature` now load without it. A bad xpub is reported on the first checkout instead of when the creator is made.
+
 ## 4.5.0
 
 ### Minor Changes

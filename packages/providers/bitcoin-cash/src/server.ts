@@ -1,10 +1,5 @@
-import {
-	decodeHdPublicKey,
-	deriveHdPathRelative,
-	encodeCashAddress,
-	hash160,
-	type HdPublicNodeValid,
-} from '@bitauth/libauth';
+import type * as KeyLibraryModule from '@bitauth/libauth';
+import type { HdPublicNodeValid } from '@bitauth/libauth';
 import type { PaymentStatus, WebhookEvent } from '@aquarian-metals/coin-moebius-core';
 import type { PaymentRecord, PaymentStore } from '@aquarian-metals/coin-moebius-server';
 import { BCH_DECIMALS, formatAtomic } from './amounts.js';
@@ -127,19 +122,21 @@ export function createBitcoinCashCreator(config: BitcoinCashCreatorConfig) {
 	const expiryMinutes = config.expiryMinutes ?? 15;
 	const logger = config.logger ?? noopLogger();
 	const rpc = rpcCaller(config);
-	const account = accountKey(config.xpub);
 	const now = Date.now;
 
 	let queue: Promise<unknown> = Promise.resolve();
 	let prefix: CashAddrPrefix | null = null;
 	let highestIndex: number | null = null;
+	let account: HdPublicNodeValid | null = null;
 
 	async function claimAddress(paymentId: string): Promise<string> {
+		const keys = await loadKeyLibrary();
+		account ??= accountKey(keys, config.xpub);
 		prefix ??= await cashAddrPrefix(rpc);
 		highestIndex ??= await highestWatchedIndex(rpc);
 		let index = highestIndex + 1;
 		for (;;) {
-			const address = receivingAddress(account, index, prefix);
+			const address = receivingAddress(keys, account, index, prefix);
 			const label = `${paymentId}/${index}`;
 			if (!(await isWatched(rpc, address))) {
 				await rpc('importaddress', { address, label, rescan: false });
@@ -700,8 +697,17 @@ interface Observation {
 	blockHeight: number | null;
 }
 
-function accountKey(xpub: string): HdPublicNodeValid {
-	const decoded = decodeHdPublicKey(xpub);
+type KeyLibrary = typeof KeyLibraryModule;
+
+let keyLibrary: Promise<KeyLibrary> | null = null;
+
+function loadKeyLibrary(): Promise<KeyLibrary> {
+	keyLibrary ??= import('@bitauth/libauth');
+	return keyLibrary;
+}
+
+function accountKey(keys: KeyLibrary, xpub: string): HdPublicNodeValid {
+	const decoded = keys.decodeHdPublicKey(xpub);
 	if (typeof decoded === 'string') {
 		throw new Error(
 			'coin-moebius/bitcoin-cash: xpub is not a valid extended public key. Copy it again from your wallet.',
@@ -716,6 +722,7 @@ function accountKey(xpub: string): HdPublicNodeValid {
 }
 
 function receivingAddress(
+	keys: KeyLibrary,
 	account: HdPublicNodeValid,
 	index: number,
 	prefix: CashAddrPrefix,
@@ -723,11 +730,15 @@ function receivingAddress(
 	if (!Number.isInteger(index) || index < 0 || index >= 0x80000000) {
 		throw new Error(`coin-moebius/bitcoin-cash: address index out of range: ${index}`);
 	}
-	const child = deriveHdPathRelative(account, `0/${index}`);
+	const child = keys.deriveHdPathRelative(account, `0/${index}`);
 	if (typeof child === 'string') {
 		throw new Error(`coin-moebius/bitcoin-cash: could not derive address 0/${index}`);
 	}
-	const encoded = encodeCashAddress({ prefix, type: 'p2pkh', payload: hash160(child.publicKey) });
+	const encoded = keys.encodeCashAddress({
+		prefix,
+		type: 'p2pkh',
+		payload: keys.hash160(child.publicKey),
+	});
 	return typeof encoded === 'string' ? encoded : encoded.address;
 }
 

@@ -516,26 +516,28 @@ describe('createBitcoinCashCreator', () => {
 		);
 	});
 
-	it('refuses a key that is not an extended public key', () => {
-		expect(() =>
-			createBitcoinCashCreator({
-				rpcUrl: RPC_URL,
-				wallet: WALLET,
-				xpub: 'not-a-key',
-				store: createMemoryStore(),
-			}),
-		).toThrow(/not a valid extended public key/);
+	it('refuses a key that is not an extended public key', async () => {
+		const create = createBitcoinCashCreator({
+			rpcUrl: RPC_URL,
+			wallet: WALLET,
+			xpub: 'not-a-key',
+			store: createMemoryStore(),
+		});
+		await expect(create({ productId: 'p', amount: 0.001, currency: 'BCH' })).rejects.toThrow(
+			/not a valid extended public key/,
+		);
 	});
 
-	it('refuses a key that is not the account key, whose addresses the wallet would never show', () => {
-		expect(() =>
-			createBitcoinCashCreator({
-				rpcUrl: RPC_URL,
-				wallet: WALLET,
-				xpub: MASTER_XPUB,
-				store: createMemoryStore(),
-			}),
-		).toThrow(/depth 3/);
+	it('refuses a key that is not the account key, whose addresses the wallet would never show', async () => {
+		const create = createBitcoinCashCreator({
+			rpcUrl: RPC_URL,
+			wallet: WALLET,
+			xpub: MASTER_XPUB,
+			store: createMemoryStore(),
+		});
+		await expect(create({ productId: 'p', amount: 0.001, currency: 'BCH' })).rejects.toThrow(
+			/depth 3/,
+		);
 	});
 });
 
