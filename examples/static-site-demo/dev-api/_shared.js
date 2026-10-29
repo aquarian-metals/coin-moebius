@@ -106,7 +106,24 @@ export function getBitcoinCashConfig() {
 		rpcUser: process.env.BCH_RPC_USER,
 		rpcPassword: process.env.BCH_RPC_PASSWORD,
 		xpub,
+		testKey: xpub === REGTEST_XPUB,
 	};
+}
+
+export async function bitcoinCashNodeChain(config) {
+	const headers = { 'Content-Type': 'application/json' };
+	if (config.rpcUser !== undefined) {
+		const credentials = `${config.rpcUser}:${config.rpcPassword ?? ''}`;
+		headers.Authorization = `Basic ${Buffer.from(credentials).toString('base64')}`;
+	}
+	const response = await fetch(`${config.rpcUrl.replace(/\/+$/, '')}/wallet/${config.wallet}`, {
+		method: 'POST',
+		headers,
+		body: JSON.stringify({ jsonrpc: '2.0', id: '0', method: 'getblockchaininfo', params: [] }),
+	});
+	const reply = await response.json();
+	if (reply.error) throw new Error(`getblockchaininfo: ${reply.error.message}`);
+	return reply.result.chain;
 }
 
 export function getBitcoinCashHmacSecret() {

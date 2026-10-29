@@ -74,7 +74,14 @@ export interface ZanoWalletRpcConfig {
 	jwtSecret?: string;
 	/** Optional `fetch` override, for tests and custom transports. */
 	fetcher?: typeof fetch;
+	/**
+	 * How long one call to the wallet, or one webhook delivery, may take
+	 * before it is abandoned, in ms. Defaults to 30 seconds.
+	 */
+	requestTimeoutMs?: number;
 }
+
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 
 /**
  * Configuration for {@link createZanoCreator}. The creator runs server-side
@@ -165,6 +172,12 @@ export interface ZanoWebhookPayload {
 	txHash: string | null;
 	/** The integrated address the buyer was given. */
 	address: string;
+	/**
+	 * The product the checkout was for, so fulfillment knows what to deliver
+	 * from the webhook alone. Optional so hand-written indexers that predate
+	 * it still verify.
+	 */
+	productId?: string;
 	/** The asset invoiced. Only money in this asset counts toward the amount. */
 	assetId: string;
 	ticker: string;
@@ -326,7 +339,7 @@ export function createZanoCreator(config: ZanoCreatorConfig) {
 			amount: input.amount,
 			currency: input.currency,
 			metadata: {
-				...(input.metadata ?? {}),
+				...withoutIndexerFields(input.metadata ?? {}),
 				productId: input.productId,
 				address,
 				paymentReference,
@@ -335,6 +348,7 @@ export function createZanoCreator(config: ZanoCreatorConfig) {
 				decimalPoint: asset.decimalPoint,
 				atomicAmount,
 				assetAmount,
+				invoiceAmount: input.amount,
 				expiresAt,
 			},
 			timestamp: now(),
@@ -448,6 +462,9 @@ export function createZanoVerifier(config: ZanoVerifierConfig): ZanoVerifier {
 			) {
 				throw new Error('coin-moebius/zano: webhook timestamp outside the freshness window');
 			}
+			if (payload.provider !== 'zano') {
+				throw new Error('coin-moebius/zano: webhook is not a zano payment');
+			}
 
 			return toPaymentResult(payload);
 		},
@@ -499,6 +516,7 @@ export function createZanoIndexer(config: ZanoIndexerConfig): ZanoIndexer {
 	const maxPages = config.maxPages ?? 20;
 	const pollIntervalMs = config.pollIntervalMs ?? 30_000;
 	const fetcher = config.fetcher ?? globalThis.fetch.bind(globalThis);
+	const requestTimeoutMs = config.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
 	const logger = config.logger ?? noopLogger();
 	const now = config.now ?? Date.now;
 	const rpc = walletRpcCaller(config);
@@ -542,7 +560,7 @@ export function createZanoIndexer(config: ZanoIndexerConfig): ZanoIndexer {
 			}
 		}
 
-		webhooksSent += await sweepExpired(observed);
+		webhooksSent += await sweepExpired(observed, errors);
 
 		state.totalTicks += 1;
 		state.totalWebhooksSent += webhooksSent;
@@ -615,14 +633,16 @@ export function createZanoIndexer(config: ZanoIndexerConfig): ZanoIndexer {
 
 		const asset = readAssetMetadata(record);
 		const expectedAtomic = readBigIntMetadata(record, 'atomicAmount');
+		if (expectedAtomic <= 0n) {
+			throw new Error(
+				'coin-moebius/zano: the stored payment has no atomicAmount, so it cannot be checked; refusing to settle it',
+			);
+		}
 
-		let receivedAtomic = 0n;
 		const others = new Map<string, bigint>();
 		for (const tx of txs) {
 			for (const income of tx.income) {
-				if (income.assetId === asset.assetId) {
-					receivedAtomic += income.amount;
-				} else {
+				if (income.assetId !== asset.assetId) {
 					others.set(income.assetId, (others.get(income.assetId) ?? 0n) + income.amount);
 				}
 			}
@@ -632,8 +652,8 @@ export function createZanoIndexer(config: ZanoIndexerConfig): ZanoIndexer {
 			amountAtomic: amount.toString(),
 		}));
 
-		const counted = txs.filter((tx) => tx.income.some((one) => one.assetId === asset.assetId));
-		if (counted.length === 0) {
+		const all = txs.filter((tx) => tx.income.some((one) => one.assetId === asset.assetId));
+		if (all.length === 0) {
 			if (otherAssets.length > 0) {
 				logger.warn('zano: payment received in an asset that was not invoiced', {
 					paymentId,
@@ -643,6 +663,16 @@ export function createZanoIndexer(config: ZanoIndexerConfig): ZanoIndexer {
 			return false;
 		}
 
+		const confirmed = all.filter(
+			(tx) => confirmationsOf(tx, walletHeight) >= requiredConfirmations,
+		);
+		const confirmedAtomic = sumIncome(confirmed, asset.assetId);
+		let status: ZanoWebhookPayload['status'] | null = null;
+		if (confirmedAtomic >= expectedAtomic) status = 'success';
+		else if (confirmed.length === all.length) status = 'partial';
+
+		const counted = status ? confirmed : all;
+		const receivedAtomic = sumIncome(counted, asset.assetId);
 		const confirmations = Math.min(...counted.map((tx) => confirmationsOf(tx, walletHeight)));
 		const confirmedHeights = counted.map((tx) => tx.height).filter((height) => height > 0);
 		const blockHeight = confirmedHeights.length > 0 ? Math.min(...confirmedHeights) : null;
@@ -660,10 +690,8 @@ export function createZanoIndexer(config: ZanoIndexerConfig): ZanoIndexer {
 			blockHeight,
 		};
 
-		if (confirmations < requiredConfirmations) return await announceProgress(observation);
+		if (!status) return await announceProgress(observation);
 
-		const status: ZanoWebhookPayload['status'] =
-			receivedAtomic >= expectedAtomic ? 'success' : 'partial';
 		const winner = await claimAnnouncement(paymentId, status);
 		if (!winner) return false;
 
@@ -672,7 +700,10 @@ export function createZanoIndexer(config: ZanoIndexerConfig): ZanoIndexer {
 		await config.store.upsert({
 			...record,
 			status,
-			amount: status === 'partial' ? proratedInvoiceAmount(record, receivedAtomic) : record.amount,
+			amount:
+				status === 'partial'
+					? proratedInvoiceAmount(record, receivedAtomic)
+					: invoiceAmountOf(record),
 			metadata: {
 				...record.metadata,
 				txHash: firstTxHash,
@@ -726,11 +757,12 @@ export function createZanoIndexer(config: ZanoIndexerConfig): ZanoIndexer {
 			status,
 			txHash: observation.txHash,
 			address: readStringMetadata(observation.record, 'address'),
+			...productIdOf(observation.record),
 			assetId: observation.asset.assetId,
 			ticker: observation.asset.ticker,
 			decimalPoint: observation.asset.decimalPoint,
 			invoiceCurrency: observation.record.currency,
-			invoiceAmount: observation.record.amount,
+			invoiceAmount: invoiceAmountOf(observation.record),
 			expectedAmountAtomic: observation.expectedAtomic.toString(),
 			receivedAmountAtomic: observation.receivedAtomic.toString(),
 			expectedAmount: fromAtomic(observation.expectedAtomic, observation.asset.decimalPoint),
@@ -743,7 +775,10 @@ export function createZanoIndexer(config: ZanoIndexerConfig): ZanoIndexer {
 		};
 	}
 
-	async function sweepExpired(observed: Map<string, ObservedTx[]>): Promise<number> {
+	async function sweepExpired(
+		observed: Map<string, ObservedTx[]>,
+		errors: string[],
+	): Promise<number> {
 		if (!config.store.listPending) {
 			if (!warnedAboutExpiry) {
 				warnedAboutExpiry = true;
@@ -772,48 +807,76 @@ export function createZanoIndexer(config: ZanoIndexerConfig): ZanoIndexer {
 				continue;
 			}
 
-			const winner = await claimAnnouncement(record.paymentId, 'failed');
-			if (!winner) continue;
+			try {
+				if (await everReceived(paymentReference)) {
+					stillOpen += 1;
+					logger.warn(
+						'zano: money reached an expired invoice outside the lookback window; raise scanLookbackBlocks to settle it',
+						{ paymentId: record.paymentId, address: readStringMetadata(record, 'address') },
+					);
+					continue;
+				}
 
-			const asset = readAssetMetadata(record);
-			const expectedAtomic = readBigIntMetadata(record, 'atomicAmount');
-			await announce(record.paymentId, 'failed', {
-				provider: 'zano',
-				paymentId: record.paymentId,
-				status: 'failed',
-				txHash: null,
-				address: readStringMetadata(record, 'address'),
-				assetId: asset.assetId,
-				ticker: asset.ticker,
-				decimalPoint: asset.decimalPoint,
-				invoiceCurrency: record.currency,
-				invoiceAmount: record.amount,
-				expectedAmountAtomic: expectedAtomic.toString(),
-				receivedAmountAtomic: '0',
-				expectedAmount: fromAtomic(expectedAtomic, asset.decimalPoint),
-				receivedAmount: 0,
-				confirmations: 0,
-				requiredConfirmations,
-				blockHeight: null,
-				timestamp: now(),
-			});
+				const winner = await claimAnnouncement(record.paymentId, 'failed');
+				if (!winner) continue;
 
-			await config.store.upsert({
-				...record,
-				status: 'failed',
-				metadata: {
-					...record.metadata,
-					failureReason: 'expired',
-				},
-				timestamp: now(),
-				createdAt: record.createdAt,
-				updatedAt: now(),
-			});
-			sent += 1;
+				const asset = readAssetMetadata(record);
+				const expectedAtomic = readBigIntMetadata(record, 'atomicAmount');
+				await announce(record.paymentId, 'failed', {
+					provider: 'zano',
+					paymentId: record.paymentId,
+					status: 'failed',
+					txHash: null,
+					address: readStringMetadata(record, 'address'),
+					...productIdOf(record),
+					assetId: asset.assetId,
+					ticker: asset.ticker,
+					decimalPoint: asset.decimalPoint,
+					invoiceCurrency: record.currency,
+					invoiceAmount: invoiceAmountOf(record),
+					expectedAmountAtomic: expectedAtomic.toString(),
+					receivedAmountAtomic: '0',
+					expectedAmount: fromAtomic(expectedAtomic, asset.decimalPoint),
+					receivedAmount: 0,
+					confirmations: 0,
+					requiredConfirmations,
+					blockHeight: null,
+					timestamp: now(),
+				});
+
+				await config.store.upsert({
+					...record,
+					status: 'failed',
+					metadata: {
+						...record.metadata,
+						failureReason: 'expired',
+					},
+					timestamp: now(),
+					createdAt: record.createdAt,
+					updatedAt: now(),
+				});
+				sent += 1;
+			} catch (err) {
+				const message = err instanceof Error ? err.message : String(err);
+				errors.push(`paymentId=${record.paymentId}: ${message}`);
+				logger.error('zano: expiry processing failed', {
+					paymentId: record.paymentId,
+					message,
+				});
+			}
 		}
 
 		state.pendingPaymentCount = stillOpen;
 		return sent;
+	}
+
+	async function everReceived(paymentReference: string): Promise<boolean> {
+		if (!isPaymentId(paymentReference)) return false;
+		const reply = await rpc<{ payments?: unknown }>('get_payments', {
+			payment_id: paymentReference,
+			allow_locked_transactions: true,
+		});
+		return readArray(reply, 'payments').length > 0;
 	}
 
 	async function claimAnnouncement(paymentId: string, status: PaymentStatus): Promise<boolean> {
@@ -822,7 +885,7 @@ export function createZanoIndexer(config: ZanoIndexerConfig): ZanoIndexer {
 		}
 		const fresh = await config.store.get(paymentId);
 		if (!fresh) return false;
-		return fresh.status === 'pending';
+		return fresh.status === 'pending' || (fresh.status === 'failed' && status !== 'failed');
 	}
 
 	/**
@@ -864,6 +927,7 @@ export function createZanoIndexer(config: ZanoIndexerConfig): ZanoIndexer {
 						'x-provider': 'zano',
 					},
 					body,
+					signal: AbortSignal.timeout(requestTimeoutMs),
 				});
 				if (response.ok) return;
 				throw new Error(`webhook responded ${response.status}`);
@@ -1073,7 +1137,12 @@ function walletRpcCaller(config: ZanoWalletRpcConfig): WalletRpc {
 		if (config.jwtSecret)
 			headers['Zano-Access-Token'] = await zanoAccessToken(body, config.jwtSecret);
 
-		const response = await fetcher(endpoint, { method: 'POST', headers, body });
+		const response = await fetcher(endpoint, {
+			method: 'POST',
+			headers,
+			body,
+			signal: AbortSignal.timeout(config.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS),
+		});
 		if (response.status === 401) {
 			throw new Error(
 				`coin-moebius/zano: wallet-rpc ${method} refused the request (401). Pass the wallet's --jwt-secret as jwtSecret.`,
@@ -1236,6 +1305,7 @@ function toPaymentResult(payload: ZanoWebhookPayload): WebhookEvent {
 		currency: payload.invoiceCurrency,
 		metadata: {
 			address: payload.address,
+			...(typeof payload.productId === 'string' ? { productId: payload.productId } : {}),
 			txHash: payload.txHash,
 			assetId: payload.assetId,
 			ticker: payload.ticker,
@@ -1256,10 +1326,52 @@ function toPaymentResult(payload: ZanoWebhookPayload): WebhookEvent {
 
 function proratedInvoiceAmount(record: PaymentRecord, receivedAtomic: bigint): number {
 	return proratedFromAtomic(
-		record.amount,
+		invoiceAmountOf(record),
 		readBigIntMetadata(record, 'atomicAmount'),
 		receivedAtomic,
 	);
+}
+
+/**
+ * Fields the indexer writes onto a record as a payment progresses. Checkout
+ * metadata usually comes from the buyer's browser, so none of these may be
+ * seeded from it: a planted `confirmations` count would silence the
+ * buyer-facing progress updates, and the rest would misreport the payment.
+ */
+const INDEXER_FIELDS = new Set([
+	'txHash',
+	'receivedAtomic',
+	'confirmations',
+	'failureReason',
+	'otherAssets',
+]);
+
+function withoutIndexerFields(metadata: Record<string, unknown>): Record<string, unknown> {
+	return Object.fromEntries(Object.entries(metadata).filter(([key]) => !INDEXER_FIELDS.has(key)));
+}
+
+function productIdOf(record: PaymentRecord): { productId?: string } {
+	const productId = readStringMetadata(record, 'productId');
+	return productId ? { productId } : {};
+}
+
+function sumIncome(txs: ObservedTx[], assetId: string): bigint {
+	let sum = 0n;
+	for (const tx of txs) {
+		for (const income of tx.income) {
+			if (income.assetId === assetId) sum += income.amount;
+		}
+	}
+	return sum;
+}
+
+/**
+ * The invoice amount in the checkout's own currency. Kept in metadata as well
+ * as on the record, because a webhook handler that saves a `failed` event
+ * writes that event's amount, 0, over the record's.
+ */
+function invoiceAmountOf(record: PaymentRecord): number {
+	return readNumberMetadata(record, 'invoiceAmount') ?? record.amount;
 }
 
 function proratedFromAtomic(
@@ -1281,6 +1393,7 @@ function readAssetMetadata(record: PaymentRecord): ZanoAsset {
 
 function readBigIntMetadata(record: PaymentRecord, key: string): bigint {
 	const raw = record.metadata[key];
+	if (typeof raw === 'number' && Number.isSafeInteger(raw) && raw > 0) return BigInt(raw);
 	if (typeof raw !== 'string' || !/^\d+$/.test(raw)) return 0n;
 	return BigInt(raw);
 }

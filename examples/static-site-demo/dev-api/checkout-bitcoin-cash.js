@@ -1,5 +1,5 @@
 import { createBitcoinCashCreator } from '@aquarian-metals/coin-moebius-bitcoin-cash/server';
-import { getBitcoinCashConfig, getStore } from './_shared.js';
+import { bitcoinCashNodeChain, getBitcoinCashConfig, getStore } from './_shared.js';
 
 const PRODUCTS = {
 	'jamstack-guide': { amount: 0.04, currency: 'BCH' },
@@ -7,13 +7,20 @@ const PRODUCTS = {
 
 let creator = null;
 
-function getCreator() {
+async function getCreator() {
 	if (creator) return creator;
 	const config = getBitcoinCashConfig();
 	if (!config) return null;
+	if (config.testKey && (await bitcoinCashNodeChain(config)) !== 'regtest') {
+		throw new Error('The built-in test key is only for regtest. Set BCH_XPUB for any other node.');
+	}
 
 	creator = createBitcoinCashCreator({
-		...config,
+		rpcUrl: config.rpcUrl,
+		wallet: config.wallet,
+		rpcUser: config.rpcUser,
+		rpcPassword: config.rpcPassword,
+		xpub: config.xpub,
 		store: getStore(),
 		expiryMinutes: 15,
 		bchPerUnit: async (currency) => {
@@ -24,7 +31,7 @@ function getCreator() {
 }
 
 export async function handleBitcoinCashCheckout(req, res) {
-	const create = getCreator();
+	const create = await getCreator();
 	if (!create) {
 		res.statusCode = 503;
 		res.setHeader('Content-Type', 'application/json');

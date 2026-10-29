@@ -15,6 +15,10 @@ import { createMoneroCreator } from '@aquarian-metals/coin-moebius-monero/server
 import { getStore, isMoneroMockEnabled } from './_shared.js';
 import { handleWalletRpc } from './mock-wallet-rpc.js';
 
+const PRODUCTS = {
+	'jamstack-guide': { amount: 0.05, currency: 'XMR' },
+};
+
 let creator = null;
 
 function getCreator() {
@@ -64,12 +68,15 @@ export async function handleMoneroCheckout(req, res) {
 	}
 
 	const body = await readJson(req);
-	const result = await create({
-		productId: String(body.productId ?? 'demo'),
-		amount: Number(body.amount),
-		currency: String(body.currency ?? 'XMR'),
-		metadata: body.metadata ?? {},
-	});
+	const productId = String(body.productId ?? '');
+	const price = Object.hasOwn(PRODUCTS, productId) ? PRODUCTS[productId] : undefined;
+	if (!price) {
+		res.statusCode = 404;
+		res.setHeader('Content-Type', 'application/json');
+		res.end(JSON.stringify({ error: 'Unknown product' }));
+		return;
+	}
+	const result = await create({ productId, ...price, metadata: body.metadata ?? {} });
 
 	res.statusCode = 200;
 	res.setHeader('Content-Type', 'application/json');

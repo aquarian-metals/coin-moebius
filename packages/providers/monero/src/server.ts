@@ -83,9 +83,16 @@ export interface MoneroCreatorConfig {
 	xmrPerUnit?: (invoiceCurrency: string) => Promise<number>;
 	/** Optional `fetch` override — used by tests. Defaults to global `fetch`. */
 	fetcher?: typeof fetch;
+	/**
+	 * How long one call to the wallet may take before it is abandoned, in ms.
+	 * Defaults to 30 seconds.
+	 */
+	requestTimeoutMs?: number;
 	/** Optional structured logger. Defaults to no-op. */
 	logger?: MoneroLogger;
 }
+
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 
 /** Input to the creator returned by {@link createMoneroCreator}. */
 export interface MoneroCreateInput {
@@ -144,6 +151,12 @@ export interface MoneroWebhookPayload {
 	/** Transaction hash, or `null` when the status is `'failed'` due to expiry without payment. */
 	txHash: string | null;
 	address: string;
+	/**
+	 * The product the checkout was for, so fulfillment knows what to deliver
+	 * from the webhook alone. Optional so hand-written indexers that predate
+	 * it still verify.
+	 */
+	productId?: string;
 	/** Original invoice currency (e.g. `'USD'`, `'XMR'`). */
 	invoiceCurrency: string;
 	/** Original invoice amount in `invoiceCurrency`. */
@@ -202,6 +215,11 @@ export interface MoneroIndexerConfig {
 	};
 	/** Optional `fetch` override — used by tests and custom transports. */
 	fetcher?: typeof fetch;
+	/**
+	 * How long one call to the wallet, or one webhook delivery, may take
+	 * before it is abandoned, in ms. Defaults to 30 seconds.
+	 */
+	requestTimeoutMs?: number;
 	/** Optional structured logger. */
 	logger?: MoneroLogger;
 	/** Time provider — overridable for tests. Defaults to `Date.now`. */
@@ -272,6 +290,7 @@ export function createMoneroCreator(config: MoneroCreatorConfig) {
 	const accountIndex = config.accountIndex ?? 0;
 	const expiryMinutes = config.expiryMinutes ?? 15;
 	const fetcher = config.fetcher ?? globalThis.fetch.bind(globalThis);
+	const requestTimeoutMs = config.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
 	const logger = config.logger ?? noopLogger();
 	const now = Date.now;
 
@@ -297,6 +316,7 @@ export function createMoneroCreator(config: MoneroCreatorConfig) {
 			'create_address',
 			{ account_index: accountIndex, label: paymentId },
 			fetcher,
+			requestTimeoutMs,
 		);
 
 		const expiresAt = now() + expiryMinutes * 60 * 1000;
@@ -309,13 +329,14 @@ export function createMoneroCreator(config: MoneroCreatorConfig) {
 			amount: input.amount,
 			currency: input.currency,
 			metadata: {
-				...(input.metadata ?? {}),
+				...withoutIndexerFields(input.metadata ?? {}),
 				productId: input.productId,
 				address: addressResult.address,
 				addressIndex: addressResult.address_index,
 				accountIndex,
 				atomicAmount,
 				xmrAmount,
+				invoiceAmount: input.amount,
 				expiresAt,
 			},
 			timestamp: now(),
@@ -400,6 +421,9 @@ export function createMoneroVerifier(config: MoneroVerifierConfig): MoneroVerifi
 			) {
 				throw new Error('coin-moebius/monero: webhook timestamp outside the freshness window');
 			}
+			if (payload.provider !== 'monero') {
+				throw new Error('coin-moebius/monero: webhook is not a monero payment');
+			}
 
 			return toPaymentResult(payload);
 		},
@@ -444,6 +468,7 @@ export function createMoneroIndexer(config: MoneroIndexerConfig): MoneroIndexer 
 	const scanLookback = config.scanLookbackBlocks ?? 20;
 	const pollIntervalMs = config.pollIntervalMs ?? 30_000;
 	const fetcher = config.fetcher ?? globalThis.fetch.bind(globalThis);
+	const requestTimeoutMs = config.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
 	const logger = config.logger ?? noopLogger();
 	const now = config.now ?? Date.now;
 	const retryConfig = {
@@ -466,6 +491,7 @@ export function createMoneroIndexer(config: MoneroIndexerConfig): MoneroIndexer 
 	// ize them here. Cross-process races are caught by `markStatusAnnounced`
 	// when the merchant's store implements it.
 	let ticking: Promise<MoneroTickResult> | null = null;
+	let warnedAboutExpiry = false;
 
 	async function tickInternal(): Promise<MoneroTickResult> {
 		const tickStartedAt = now();
@@ -478,6 +504,7 @@ export function createMoneroIndexer(config: MoneroIndexerConfig): MoneroIndexer 
 			'get_height',
 			{},
 			fetcher,
+			requestTimeoutMs,
 		);
 		const walletHeight = heightResult.height;
 		state.walletHeight = walletHeight;
@@ -494,11 +521,17 @@ export function createMoneroIndexer(config: MoneroIndexerConfig): MoneroIndexer 
 				max_height: walletHeight,
 			},
 			fetcher,
+			requestTimeoutMs,
 		);
 		const incoming = transfersResult.in ?? [];
 		transfersInspected = incoming.length;
 
-		const labelByIndex = await fetchLabelMap(config.walletRpcUrl, accountIndex, fetcher);
+		const labelByIndex = await fetchLabelMap(
+			config.walletRpcUrl,
+			accountIndex,
+			fetcher,
+			requestTimeoutMs,
+		);
 
 		// Group transfers by paymentId so a payment that received multiple
 		// sub-amounts (multi-tx invoice settlement) sums correctly.
@@ -529,7 +562,7 @@ export function createMoneroIndexer(config: MoneroIndexerConfig): MoneroIndexer 
 		// announce `failed` if so. We only look at addresses the wallet
 		// knows about (via labels), since that's our cheapest enumeration
 		// of "payments we care about."
-		const expiredCount = await sweepExpired(labelByIndex, transfersByPaymentId, walletHeight);
+		const expiredCount = await sweepExpired(labelByIndex, transfersByPaymentId, errors);
 		webhooksSent += expiredCount;
 
 		state.totalTicks += 1;
@@ -566,23 +599,32 @@ export function createMoneroIndexer(config: MoneroIndexerConfig): MoneroIndexer 
 		}
 
 		const expectedAtomic = readAtomicMetadata(record);
-		const receivedAtomic = transfers.reduce((sum, t) => sum + BigInt(t.amount), BigInt(0));
-		// The minimum confirmations across all contributing txs gates the
-		// payment's overall confirmation state — we only succeed once the
-		// slowest piece has cleared.
-		const minConfirmations = transfers.reduce(
+		if (expectedAtomic <= 0n) {
+			throw new Error(
+				'coin-moebius/monero: the stored payment has no atomicAmount, so it cannot be checked; refusing to settle it',
+			);
+		}
+
+		const confirmed = transfers.filter((t) => (t.confirmations ?? 0) >= requiredConfirmations);
+		const confirmedAtomic = sumAtomic(confirmed);
+		let status: MoneroWebhookPayload['status'] | null = null;
+		if (confirmedAtomic >= expectedAtomic) status = 'success';
+		else if (confirmed.length === transfers.length) status = 'partial';
+
+		const counted = status ? confirmed : transfers;
+		const receivedAtomic = sumAtomic(counted);
+		const minConfirmations = counted.reduce(
 			(min, t) => Math.min(min, t.confirmations ?? 0),
 			Number.POSITIVE_INFINITY,
 		);
-		const firstHeight = transfers.reduce(
+		const firstHeight = counted.reduce(
 			(min, t) => Math.min(min, t.height ?? walletHeight),
 			Number.POSITIVE_INFINITY,
 		);
-		const firstTxHash = transfers[0]?.txid ?? null;
-
+		const firstTxHash = counted[0]?.txid ?? null;
 		const blockHeight = Number.isFinite(firstHeight) ? firstHeight : walletHeight;
 
-		if (minConfirmations < requiredConfirmations) {
+		if (!status) {
 			return await announceProgress(record, {
 				paymentId,
 				expectedAtomic,
@@ -593,8 +635,6 @@ export function createMoneroIndexer(config: MoneroIndexerConfig): MoneroIndexer 
 			});
 		}
 
-		const status: MoneroWebhookPayload['status'] =
-			receivedAtomic >= expectedAtomic ? 'success' : 'partial';
 		const winner = await claimAnnouncement(paymentId, status);
 		if (!winner) return false;
 
@@ -604,8 +644,9 @@ export function createMoneroIndexer(config: MoneroIndexerConfig): MoneroIndexer 
 			status,
 			txHash: firstTxHash,
 			address: readStringMetadata(record, 'address'),
+			...productIdOf(record),
 			invoiceCurrency: record.currency,
-			invoiceAmount: record.amount,
+			invoiceAmount: invoiceAmountOf(record),
 			expectedAmountAtomic: expectedAtomic.toString(),
 			receivedAmountAtomic: receivedAtomic.toString(),
 			expectedAmountXmr: atomicToXmr(expectedAtomic),
@@ -619,7 +660,10 @@ export function createMoneroIndexer(config: MoneroIndexerConfig): MoneroIndexer 
 		await config.store.upsert({
 			...record,
 			status,
-			amount: status === 'partial' ? proratedInvoiceAmount(record, receivedAtomic) : record.amount,
+			amount:
+				status === 'partial'
+					? proratedInvoiceAmount(record, receivedAtomic)
+					: invoiceAmountOf(record),
 			metadata: {
 				...record.metadata,
 				txHash: firstTxHash,
@@ -666,8 +710,9 @@ export function createMoneroIndexer(config: MoneroIndexerConfig): MoneroIndexer 
 			status: 'pending',
 			txHash: observed.txHash,
 			address: readStringMetadata(record, 'address'),
+			...productIdOf(record),
 			invoiceCurrency: record.currency,
-			invoiceAmount: record.amount,
+			invoiceAmount: invoiceAmountOf(record),
 			expectedAmountAtomic: observed.expectedAtomic.toString(),
 			receivedAmountAtomic: observed.receivedAtomic.toString(),
 			expectedAmountXmr: atomicToXmr(observed.expectedAtomic),
@@ -694,68 +739,120 @@ export function createMoneroIndexer(config: MoneroIndexerConfig): MoneroIndexer 
 		return true;
 	}
 
+	/**
+	 * The store lists the open invoices when it can (`listPending`). When it
+	 * cannot, every labeled subaddress in the wallet is read back instead, and
+	 * a warning says why that grows with the shop. Before an invoice is failed,
+	 * the wallet is asked whether anything ever reached its subaddress, so
+	 * money that landed outside the lookback window is never reported missing.
+	 */
 	async function sweepExpired(
 		labelByIndex: Map<number, string>,
 		transfersByPaymentId: Map<string, WalletTransfer[]>,
-		walletHeight: number,
+		errors: string[],
 	): Promise<number> {
+		const candidates = await openInvoices(labelByIndex);
 		let sent = 0;
-		for (const paymentId of labelByIndex.values()) {
-			if (transfersByPaymentId.has(paymentId)) continue;
-			const record = await config.store.get(paymentId);
-			if (!record) continue;
+		let stillOpen = 0;
+
+		for (const record of candidates) {
+			const paymentId = record.paymentId;
 			if (record.status !== 'pending') continue;
+			if (transfersByPaymentId.has(paymentId)) {
+				stillOpen += 1;
+				continue;
+			}
 			const expiresAt = readNumberMetadata(record, 'expiresAt');
-			if (expiresAt === null || now() < expiresAt) continue;
+			if (expiresAt === null || now() < expiresAt) {
+				stillOpen += 1;
+				continue;
+			}
 
-			const winner = await claimAnnouncement(paymentId, 'failed');
-			if (!winner) continue;
+			try {
+				if (await everReceived(record)) {
+					stillOpen += 1;
+					logger.warn(
+						'monero: money reached an expired invoice outside the lookback window; raise scanLookbackBlocks to settle it',
+						{ paymentId, address: readStringMetadata(record, 'address') },
+					);
+					continue;
+				}
 
-			const expectedAtomic = readAtomicMetadata(record);
-			await announce(paymentId, 'failed', {
-				provider: 'monero',
-				paymentId,
-				status: 'failed',
-				txHash: null,
-				address: readStringMetadata(record, 'address'),
-				invoiceCurrency: record.currency,
-				invoiceAmount: record.amount,
-				expectedAmountAtomic: expectedAtomic.toString(),
-				receivedAmountAtomic: '0',
-				expectedAmountXmr: atomicToXmr(expectedAtomic),
-				receivedAmountXmr: 0,
-				confirmations: 0,
-				blockHeight: null,
-				timestamp: now(),
-			});
+				const winner = await claimAnnouncement(paymentId, 'failed');
+				if (!winner) continue;
 
-			await config.store.upsert({
-				...record,
-				status: 'failed',
-				metadata: {
-					...record.metadata,
-					failureReason: 'expired',
-				},
-				timestamp: now(),
-				createdAt: record.createdAt,
-				updatedAt: now(),
-			});
-			sent += 1;
+				const expectedAtomic = readAtomicMetadata(record);
+				await announce(paymentId, 'failed', {
+					provider: 'monero',
+					paymentId,
+					status: 'failed',
+					txHash: null,
+					address: readStringMetadata(record, 'address'),
+					...productIdOf(record),
+					invoiceCurrency: record.currency,
+					invoiceAmount: invoiceAmountOf(record),
+					expectedAmountAtomic: expectedAtomic.toString(),
+					receivedAmountAtomic: '0',
+					expectedAmountXmr: atomicToXmr(expectedAtomic),
+					receivedAmountXmr: 0,
+					confirmations: 0,
+					requiredConfirmations,
+					blockHeight: null,
+					timestamp: now(),
+				});
+
+				await config.store.upsert({
+					...record,
+					status: 'failed',
+					metadata: {
+						...record.metadata,
+						failureReason: 'expired',
+					},
+					timestamp: now(),
+					createdAt: record.createdAt,
+					updatedAt: now(),
+				});
+				sent += 1;
+			} catch (err) {
+				const message = err instanceof Error ? err.message : String(err);
+				errors.push(`paymentId=${paymentId}: ${message}`);
+				logger.error('monero: expiry processing failed', { paymentId, message });
+			}
 		}
-		state.pendingPaymentCount = countPending(labelByIndex, transfersByPaymentId);
-		void walletHeight;
+
+		state.pendingPaymentCount = stillOpen;
 		return sent;
 	}
 
-	function countPending(
-		labelByIndex: Map<number, string>,
-		transfersByPaymentId: Map<string, WalletTransfer[]>,
-	): number {
-		let pending = 0;
-		for (const paymentId of labelByIndex.values()) {
-			if (!transfersByPaymentId.has(paymentId)) pending += 1;
+	async function openInvoices(labelByIndex: Map<number, string>): Promise<PaymentRecord[]> {
+		if (config.store.listPending) {
+			return await config.store.listPending('monero');
 		}
-		return pending;
+		if (!warnedAboutExpiry) {
+			warnedAboutExpiry = true;
+			logger.warn(
+				'monero: store has no listPending, so every labeled subaddress is read back each tick; add listPending to keep ticks fast as the shop grows',
+			);
+		}
+		const records: PaymentRecord[] = [];
+		for (const paymentId of labelByIndex.values()) {
+			const record = await config.store.get(paymentId);
+			if (record?.status === 'pending') records.push(record);
+		}
+		return records;
+	}
+
+	async function everReceived(record: PaymentRecord): Promise<boolean> {
+		const addressIndex = readNumberMetadata(record, 'addressIndex');
+		if (addressIndex === null) return false;
+		const result = await walletRpc<{ in?: WalletTransfer[] }>(
+			config.walletRpcUrl,
+			'get_transfers',
+			{ in: true, account_index: accountIndex, subaddr_indices: [addressIndex] },
+			fetcher,
+			requestTimeoutMs,
+		);
+		return (result.in ?? []).length > 0;
 	}
 
 	async function claimAnnouncement(paymentId: string, status: PaymentStatus): Promise<boolean> {
@@ -768,7 +865,7 @@ export function createMoneroIndexer(config: MoneroIndexerConfig): MoneroIndexer 
 		// resend, too).
 		const fresh = await config.store.get(paymentId);
 		if (!fresh) return false;
-		return fresh.status === 'pending';
+		return fresh.status === 'pending' || (fresh.status === 'failed' && status !== 'failed');
 	}
 
 	/**
@@ -810,6 +907,7 @@ export function createMoneroIndexer(config: MoneroIndexerConfig): MoneroIndexer 
 						'x-provider': 'monero',
 					},
 					body,
+					signal: AbortSignal.timeout(requestTimeoutMs),
 				});
 				if (response.ok) return;
 				throw new Error(`webhook responded ${response.status}`);
@@ -838,16 +936,23 @@ export function createMoneroIndexer(config: MoneroIndexerConfig): MoneroIndexer 
 			'get_transfer_by_txid',
 			{ txid: txHash, account_index: accountIndex },
 			fetcher,
+			requestTimeoutMs,
 		);
 		const transfers = result.transfers ?? (result.transfer ? [result.transfer] : []);
 		if (transfers.length === 0) return;
 
-		const labelByIndex = await fetchLabelMap(config.walletRpcUrl, accountIndex, fetcher);
+		const labelByIndex = await fetchLabelMap(
+			config.walletRpcUrl,
+			accountIndex,
+			fetcher,
+			requestTimeoutMs,
+		);
 		const heightResult = await walletRpc<{ height: number }>(
 			config.walletRpcUrl,
 			'get_height',
 			{},
 			fetcher,
+			requestTimeoutMs,
 		);
 		const walletHeight = heightResult.height;
 
@@ -951,12 +1056,14 @@ async function walletRpc<T>(
 	method: string,
 	params: unknown,
 	fetcher: typeof fetch,
+	timeoutMs: number,
 ): Promise<T> {
 	const endpoint = url.replace(/\/+$/, '') + '/json_rpc';
 	const response = await fetcher(endpoint, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ jsonrpc: '2.0', id: '0', method, params }),
+		signal: AbortSignal.timeout(timeoutMs),
 	});
 	if (!response.ok) {
 		throw new Error(`coin-moebius/monero: wallet-rpc ${method} HTTP ${response.status}`);
@@ -975,10 +1082,11 @@ async function fetchLabelMap(
 	walletRpcUrl: string,
 	accountIndex: number,
 	fetcher: typeof fetch,
+	timeoutMs: number,
 ): Promise<Map<number, string>> {
 	const result = await walletRpc<{
 		addresses: { address: string; address_index: number; label?: string }[];
-	}>(walletRpcUrl, 'get_address', { account_index: accountIndex }, fetcher);
+	}>(walletRpcUrl, 'get_address', { account_index: accountIndex }, fetcher, timeoutMs);
 	const map = new Map<number, string>();
 	for (const a of result.addresses) {
 		if (a.label) map.set(a.address_index, a.label);
@@ -1005,6 +1113,7 @@ function toPaymentResult(payload: MoneroWebhookPayload): WebhookEvent {
 		currency: payload.invoiceCurrency,
 		metadata: {
 			address: payload.address,
+			...(typeof payload.productId === 'string' ? { productId: payload.productId } : {}),
 			txHash: payload.txHash,
 			confirmations: payload.confirmations,
 			...(payload.requiredConfirmations === undefined
@@ -1095,7 +1204,37 @@ function atomicToXmr(atomic: bigint): number {
 function proratedInvoiceAmount(record: PaymentRecord, receivedAtomic: bigint): number {
 	const expectedAtomic = readAtomicMetadata(record);
 	if (expectedAtomic === 0n) return 0;
-	return proratedFromAtomic(record.amount, expectedAtomic, receivedAtomic);
+	return proratedFromAtomic(invoiceAmountOf(record), expectedAtomic, receivedAtomic);
+}
+
+/**
+ * Fields the indexer writes onto a record as a payment progresses. Checkout
+ * metadata usually comes from the buyer's browser, so none of these may be
+ * seeded from it: a planted `confirmations` count would silence the
+ * buyer-facing progress updates, and the rest would misreport the payment.
+ */
+const INDEXER_FIELDS = new Set(['txHash', 'receivedAtomic', 'confirmations', 'failureReason']);
+
+function withoutIndexerFields(metadata: Record<string, unknown>): Record<string, unknown> {
+	return Object.fromEntries(Object.entries(metadata).filter(([key]) => !INDEXER_FIELDS.has(key)));
+}
+
+function productIdOf(record: PaymentRecord): { productId?: string } {
+	const productId = readStringMetadata(record, 'productId');
+	return productId ? { productId } : {};
+}
+
+function sumAtomic(transfers: WalletTransfer[]): bigint {
+	return transfers.reduce((sum, t) => sum + BigInt(t.amount), 0n);
+}
+
+/**
+ * The invoice amount in the checkout's own currency. Kept in metadata as well
+ * as on the record, because a webhook handler that saves a `failed` event
+ * writes that event's amount, 0, over the record's.
+ */
+function invoiceAmountOf(record: PaymentRecord): number {
+	return readNumberMetadata(record, 'invoiceAmount') ?? record.amount;
 }
 
 function proratedFromAtomic(
@@ -1112,12 +1251,9 @@ function proratedFromAtomic(
 
 function readAtomicMetadata(record: PaymentRecord): bigint {
 	const raw = record.metadata.atomicAmount;
-	if (typeof raw !== 'string') return 0n;
-	try {
-		return BigInt(raw);
-	} catch {
-		return 0n;
-	}
+	if (typeof raw === 'number' && Number.isSafeInteger(raw) && raw > 0) return BigInt(raw);
+	if (typeof raw !== 'string' || !/^\d+$/.test(raw)) return 0n;
+	return BigInt(raw);
 }
 
 function readStringMetadata(record: PaymentRecord, key: string): string {
@@ -1131,12 +1267,9 @@ function readNumberMetadata(record: PaymentRecord, key: string): number | null {
 }
 
 function generatePaymentId(productId: string, ts: number): string {
-	// Suffix with a short random component so two checkouts for the same
-	// product in the same millisecond don't collide.
-	const rand = Math.floor(Math.random() * 0xffffffff)
-		.toString(16)
-		.padStart(8, '0');
-	return `xmr_${productId}_${ts}_${rand}`;
+	const bytes = new Uint8Array(8);
+	crypto.getRandomValues(bytes);
+	return `xmr_${productId}_${ts}_${toHex(bytes)}`;
 }
 
 function headerValue(

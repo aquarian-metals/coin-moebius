@@ -70,9 +70,13 @@ export async function handleWalletRpc(method, params) {
 			const wantsIn = Boolean(params.in);
 			if (!wantsIn) return {};
 			const accountIndex = Number(params.account_index ?? 0);
+			const subaddrIndices = Array.isArray(params.subaddr_indices)
+				? params.subaddr_indices.map(Number)
+				: null;
 			const height = currentHeight();
 			const result = STATE.transfers
 				.filter((t) => t.accountIndex === accountIndex)
+				.filter((t) => subaddrIndices === null || subaddrIndices.includes(t.addressIndex))
 				.map((t) => ({
 					txid: t.txid,
 					amount: t.amount,

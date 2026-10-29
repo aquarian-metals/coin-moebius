@@ -78,6 +78,7 @@ function makeNode(chain = 'main') {
 		chain,
 		height: 900_000,
 		labels: new Map<string, string>(),
+		stealNextImport: null as string | null,
 		txs: [] as NodeTx[],
 		calls: [] as {
 			url: string;
@@ -99,13 +100,21 @@ function makeNode(chain = 'main') {
 		switch (method) {
 			case 'getblockchaininfo':
 				return { chain: state.chain, blocks: state.height };
-			case 'importaddress':
+			case 'importaddress': {
 				if (named.rescan !== false) return { __error: 'a rescan was asked for' };
-				state.labels.set(String(named.address), typeof named.label === 'string' ? named.label : '');
+				const label = state.stealNextImport ?? (typeof named.label === 'string' ? named.label : '');
+				state.stealNextImport = null;
+				state.labels.set(String(named.address), label);
 				return null;
+			}
 			case 'getaddressinfo': {
 				const address = (params as string[])[0];
-				return { address, ismine: false, iswatchonly: state.labels.has(address) };
+				return {
+					address,
+					ismine: false,
+					iswatchonly: state.labels.has(address),
+					label: state.labels.get(address) ?? '',
+				};
 			}
 			case 'listlabels':
 				return [...new Set(state.labels.values())];
@@ -415,6 +424,17 @@ describe('createBitcoinCashCreator', () => {
 
 		const next = await ctx.create({ productId: 'p', amount: 0.001, currency: 'BCH' });
 		expect(next.address).toBe(addressAt(2));
+	});
+
+	it('moves to the next address when another checkout labels the same one first', async () => {
+		const ctx = setup();
+		ctx.node.state.stealNextImport = 'bch_0000000000000000/0';
+
+		const result = await ctx.create({ productId: 'p', amount: 0.001, currency: 'BCH' });
+
+		expect(result.address).toBe(addressAt(1));
+		expect(ctx.node.state.labels.get(addressAt(0))).toBe('bch_0000000000000000/0');
+		expect(ctx.node.state.labels.get(addressAt(1))).toBe(`${result.paymentId}/1`);
 	});
 
 	it('calls the wallet endpoint with HTTP Basic auth', async () => {

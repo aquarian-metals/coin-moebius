@@ -705,7 +705,7 @@ describe('createMoneroIndexer', () => {
 		currentTime = ctx.payment1.expiresAt + 1000;
 
 		await indexer.tick();
-		expect(ctx.webhookCalls).toHaveLength(1);
+		expect(ctx.webhookCalls).toHaveLength(2);
 		const sentBody = JSON.parse(ctx.webhookCalls[0].body) as MoneroWebhookPayload;
 		expect(sentBody.status).toBe('failed');
 		expect(sentBody.txHash).toBeNull();
@@ -713,6 +713,7 @@ describe('createMoneroIndexer', () => {
 		const updated = await ctx.store.get(ctx.payment1.paymentId);
 		expect(updated?.status).toBe('failed');
 		expect(updated?.metadata.failureReason).toBe('expired');
+		expect((await ctx.store.get(ctx.payment2.paymentId))?.status).toBe('failed');
 	});
 
 	it('tick(): does not re-emit webhooks for already-announced payments (uses markStatusAnnounced)', async () => {
@@ -1075,5 +1076,256 @@ describe('a quote is rounded to something a buyer can read', () => {
 		expect(roundQuoteUp(0)).toBe(0);
 		expect(roundQuoteUp(-1)).toBe(-1);
 		expect(roundQuoteUp(Number.NaN)).toBeNaN();
+	});
+});
+
+describe('adversarial review findings', () => {
+	const NOW = 1_700_000_000_000;
+
+	async function shop(opts: { now?: () => number; plainStore?: boolean } = {}) {
+		const store = createMemoryStore();
+		const plain: PaymentStore = {
+			upsert: store.upsert.bind(store),
+			get: store.get.bind(store),
+			listPending: store.listPending!.bind(store),
+		};
+		const walletCalls: Array<{ method: string; params: unknown }> = [];
+		const webhookCalls: Array<{ body: string; headers: Record<string, string> }> = [];
+		const transfers: Array<{
+			txid: string;
+			amount: string;
+			height: number;
+			confirmations: number;
+			addressIndex: number;
+		}> = [];
+		const labels = new Map<number, string>();
+		const height = 3_000_010;
+
+		const walletFetcher = makeWalletFetcher(
+			{
+				create_address: (params: unknown) => {
+					const p = params as { label: string };
+					const idx = labels.size;
+					labels.set(idx, p.label);
+					return { address: `8addr_${idx}`, address_index: idx };
+				},
+				get_height: () => ({ height }),
+				get_address: () => ({
+					addresses: [...labels].map(([address_index, label]) => ({
+						address: `8addr_${address_index}`,
+						address_index,
+						label,
+					})),
+				}),
+				get_transfers: (params: unknown) => {
+					const p = params as { subaddr_indices?: number[]; min_height?: number };
+					const wanted = transfers.filter((t) =>
+						p.subaddr_indices
+							? p.subaddr_indices.includes(t.addressIndex)
+							: t.height >= (p.min_height ?? 0),
+					);
+					return {
+						in: wanted.map((t) => ({
+							txid: t.txid,
+							amount: t.amount,
+							height: t.height,
+							confirmations: t.confirmations,
+							subaddr_index: { major: 0, minor: t.addressIndex },
+						})),
+					};
+				},
+			},
+			walletCalls,
+		);
+		const fetcher: typeof fetch = async (input, init) => {
+			if (urlOf(input) === WEBHOOK_URL) {
+				webhookCalls.push({
+					body: bodyString(init),
+					headers: (init?.headers as Record<string, string>) ?? {},
+				});
+				return new Response('', { status: 200 });
+			}
+			return walletFetcher(input, init);
+		};
+		const usedStore = opts.plainStore ? plain : store;
+		const create = createMoneroCreator({ walletRpcUrl: WALLET_URL, store: usedStore, fetcher });
+		const invoice = await create({ productId: 'ebook-42', amount: 0.1, currency: 'XMR' });
+		const indexer = createMoneroIndexer({
+			walletRpcUrl: WALLET_URL,
+			store: usedStore,
+			webhookUrl: WEBHOOK_URL,
+			hmacSecret: SECRET,
+			requiredConfirmations: 10,
+			fetcher,
+			now: opts.now ?? (() => NOW),
+		});
+		const pay = (amount: string, confirmations: number, txid = `tx${transfers.length}`) => {
+			transfers.push({
+				txid,
+				amount,
+				height: height - confirmations,
+				confirmations,
+				addressIndex: 0,
+			});
+		};
+		const payloads = () => webhookCalls.map((c) => JSON.parse(c.body) as MoneroWebhookPayload);
+		return { store, walletCalls, webhookCalls, invoice, indexer, pay, payloads };
+	}
+
+	it("rejects another provider's message signed with a reused secret", async () => {
+		const verifier = createMoneroVerifier({ hmacSecret: SECRET, now: () => NOW });
+		const foreign = {
+			provider: 'zano',
+			paymentId: 'xmr_p_1_abcd',
+			status: 'success',
+			timestamp: NOW,
+			invoiceAmount: 1,
+			expectedAmountAtomic: '1',
+			receivedAmountAtomic: '1',
+		};
+		const sig = await computeMoneroSignature(JSON.stringify(foreign), SECRET);
+		await expect(verifier.verify(foreign, { 'x-monero-sig': sig })).rejects.toThrow(
+			/not a monero payment/,
+		);
+	});
+
+	it('never lets checkout metadata seed the fields the indexer owns', async () => {
+		const ctx = await shop();
+		const store = createMemoryStore();
+		const create = createMoneroCreator({
+			walletRpcUrl: WALLET_URL,
+			store,
+			fetcher: makeWalletFetcher({
+				create_address: () => ({ address: '8addr_9', address_index: 9 }),
+			}),
+		});
+		const made = await create({
+			productId: 'p',
+			amount: 0.1,
+			currency: 'XMR',
+			metadata: { orderRef: 'A-17', confirmations: 99, txHash: 'planted', receivedAtomic: '1' },
+		});
+		const record = await store.get(made.paymentId);
+		expect(record?.metadata.orderRef).toBe('A-17');
+		for (const key of ['confirmations', 'txHash', 'receivedAtomic']) {
+			expect(record?.metadata).not.toHaveProperty(key);
+		}
+		void ctx;
+	});
+
+	it('names the product and keeps the invoice amount on every webhook it sends', async () => {
+		const ctx = await shop();
+		const record = (await ctx.store.get(ctx.invoice.paymentId))!;
+		await ctx.store.upsert({ ...record, status: 'failed', amount: 0 });
+		ctx.pay('100000000000', 10);
+
+		await ctx.indexer.tick();
+		const settled = ctx.payloads().at(-1)!;
+		expect(settled.status).toBe('success');
+		expect(settled.productId).toBe('ebook-42');
+		expect(settled.invoiceAmount).toBe(0.1);
+		expect((await ctx.store.get(ctx.invoice.paymentId))?.amount).toBe(0.1);
+	});
+
+	it('never settles dust as paid when the stored invoice amount was overwritten', async () => {
+		const ctx = await shop();
+		const record = (await ctx.store.get(ctx.invoice.paymentId))!;
+		await ctx.store.upsert({
+			...record,
+			metadata: { address: '8addr_0', addressIndex: 0, txHash: null, confirmations: 0 },
+		});
+		ctx.pay('1', 10);
+
+		const result = await ctx.indexer.tick();
+		expect((await ctx.store.get(ctx.invoice.paymentId))?.status).toBe('pending');
+		expect(result.errors.join(' ')).toContain('no atomicAmount');
+	});
+
+	it('settles an order whose store hands the amount back as a number', async () => {
+		const ctx = await shop();
+		const record = (await ctx.store.get(ctx.invoice.paymentId))!;
+		await ctx.store.upsert({
+			...record,
+			metadata: { ...record.metadata, atomicAmount: 100000000000 },
+		});
+		ctx.pay('100000000000', 10);
+
+		await ctx.indexer.tick();
+		expect((await ctx.store.get(ctx.invoice.paymentId))?.status).toBe('success');
+	});
+
+	it('settles a confirmed full payment even while a later transfer is still unconfirmed', async () => {
+		const ctx = await shop();
+		ctx.pay('100000000000', 10, 'full');
+		ctx.pay('1000', 1, 'stuck-dust');
+
+		await ctx.indexer.tick();
+		expect((await ctx.store.get(ctx.invoice.paymentId))?.status).toBe('success');
+		expect(ctx.payloads().at(-1)?.receivedAmountAtomic).toBe('100000000000');
+	});
+
+	it('still waits on an unconfirmed transfer before calling a short payment partial', async () => {
+		const ctx = await shop();
+		ctx.pay('50000000000', 10, 'half');
+		ctx.pay('50000000000', 1, 'other-half');
+
+		await ctx.indexer.tick();
+		expect((await ctx.store.get(ctx.invoice.paymentId))?.status).toBe('pending');
+		expect(ctx.payloads().at(-1)?.status).toBe('pending');
+	});
+
+	it('settles a late payment on an expired invoice even when the store cannot claim announcements', async () => {
+		let currentTime = NOW;
+		const ctx = await shop({ now: () => currentTime, plainStore: true });
+
+		currentTime = ctx.invoice.expiresAt + 1000;
+		await ctx.indexer.tick();
+		expect((await ctx.store.get(ctx.invoice.paymentId))?.status).toBe('failed');
+
+		ctx.pay('100000000000', 10);
+		await ctx.indexer.tick();
+		expect((await ctx.store.get(ctx.invoice.paymentId))?.status).toBe('success');
+		await ctx.indexer.tick();
+		expect(ctx.payloads().filter((p) => p.status === 'success')).toHaveLength(1);
+	});
+
+	it('never fails an invoice whose money landed outside the lookback window', async () => {
+		let currentTime = NOW;
+		const ctx = await shop({ now: () => currentTime });
+		ctx.pay('100000000000', 1000);
+
+		currentTime = ctx.invoice.expiresAt + 1000;
+		await ctx.indexer.tick();
+
+		expect((await ctx.store.get(ctx.invoice.paymentId))?.status).toBe('pending');
+		expect(ctx.payloads().map((p) => p.status)).not.toContain('failed');
+		const asked = ctx.walletCalls.find(
+			(c) =>
+				c.method === 'get_transfers' &&
+				(c.params as { subaddr_indices?: number[] }).subaddr_indices,
+		);
+		expect(asked).toBeDefined();
+	});
+
+	it('gives up on a wallet that never answers instead of stalling the tick', async () => {
+		const hanging: typeof fetch = async (_input, init) =>
+			new Promise<Response>((_resolve, reject) => {
+				init?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+			});
+		const indexer = createMoneroIndexer({
+			walletRpcUrl: WALLET_URL,
+			store: createMemoryStore(),
+			webhookUrl: WEBHOOK_URL,
+			hmacSecret: SECRET,
+			fetcher: hanging,
+			requestTimeoutMs: 20,
+		});
+		const result = await indexer.tick();
+		expect(result.errors).toHaveLength(1);
+	});
+
+	it('gives every payment id a random part nobody can guess from the checkout time', async () => {
+		const ctx = await shop();
+		expect(ctx.invoice.paymentId).toMatch(/^xmr_ebook-42_\d+_[0-9a-f]{16}$/);
 	});
 });

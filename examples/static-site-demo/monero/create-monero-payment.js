@@ -11,6 +11,10 @@
 import { createMoneroCreator } from '@aquarian-metals/coin-moebius-monero/server';
 import { myStore } from './_store.js';
 
+const PRODUCTS = {
+	'jamstack-guide': { amount: 0.05, currency: 'XMR' },
+};
+
 const create = createMoneroCreator({
 	walletRpcUrl: process.env.MONERO_WALLET_RPC_URL,
 	store: myStore,
@@ -30,11 +34,15 @@ export default async (req) => {
 		return new Response('Method not allowed', { status: 405 });
 	}
 	try {
-		const { productId, amount, currency, metadata } = await req.json();
-		if (!productId || !amount || !currency) {
-			throw new Error('Missing required fields: productId, amount, currency');
+		const { productId, metadata } = await req.json();
+		const product = Object.hasOwn(PRODUCTS, productId) ? PRODUCTS[productId] : undefined;
+		if (!product) {
+			return new Response(JSON.stringify({ error: 'Unknown product' }), {
+				status: 404,
+				headers: { 'Content-Type': 'application/json' },
+			});
 		}
-		const instructions = await create({ productId, amount, currency, metadata });
+		const instructions = await create({ productId, ...product, metadata });
 		return new Response(JSON.stringify(instructions), {
 			status: 200,
 			headers: { 'Content-Type': 'application/json' },

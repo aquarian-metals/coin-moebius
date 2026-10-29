@@ -1,5 +1,21 @@
 # @aquarian-metals/coin-moebius-zano
 
+## 4.5.0
+
+### Patch Changes
+
+- **Never settles an order whose stored amount is missing.** A missing `atomicAmount` used to read as zero, so any payment counted as paid in full. The indexer now refuses and reports why. A whole-number `atomicAmount` handed back by a store as a number is read as the same amount.
+- **A confirmed, full payment settles even while another transfer to the same invoice is unconfirmed.** One unconfirmed transfer can no longer hold a paid order open; a short payment still waits for every transfer before it is called `partial`.
+- **The verifier refuses a message whose `provider` is not `zano`**, so a secret reused across indexers cannot pass another provider's message off as a Zano payment.
+- **Wallet calls and webhook deliveries time out after 30 seconds** (`requestTimeoutMs`).
+- **Checkout metadata can no longer seed the fields the indexer owns** (`confirmations`, `txHash`, `receivedAtomic`), which silenced the progress webhooks.
+- **A late payment on an expired invoice settles even when the store cannot claim announcements.** The fallback only let a `pending` invoice through.
+- **The invoice amount on the settle and late-payment webhooks comes from the stored invoice**, so a handler that overwrote the order with a `failed` event no longer zeroes it.
+- **An invoice whose money landed outside the lookback window is never failed.** Before failing it, the indexer asks the wallet for that payment id's payments; money found there keeps the invoice open and logs a warning to raise the lookback.
+- **Webhooks name the product** (`productId` on the payload).
+- **Checkout metadata can no longer seed `otherAssets`** along with the other indexer-owned fields.
+- **The README's checkout code takes the price from your own product list, never from the request.**
+
 ## 4.2.0
 
 ### Minor Changes

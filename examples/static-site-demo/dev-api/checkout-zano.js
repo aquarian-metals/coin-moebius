@@ -15,9 +15,17 @@
 import {
 	createZanoCreator,
 	FREEDOM_DOLLAR_ASSET_ID,
+	ZANO_ASSET_ID,
 } from '@aquarian-metals/coin-moebius-zano/server';
 import { getStore, isZanoMockEnabled } from './_shared.js';
 import { handleZanoWalletRpc } from './mock-zano-wallet-rpc.js';
+
+const PRODUCTS = {
+	'jamstack-guide': {
+		[ZANO_ASSET_ID]: { amount: 0.5, currency: 'ZANO' },
+		[FREEDOM_DOLLAR_ASSET_ID]: { amount: 19.99, currency: 'USD' },
+	},
+};
 
 let creator = null;
 
@@ -73,13 +81,16 @@ export async function handleZanoCheckout(req, res) {
 	}
 
 	const body = await readJson(req);
-	const result = await create({
-		productId: String(body.productId ?? 'demo'),
-		amount: Number(body.amount),
-		currency: String(body.currency ?? 'ZANO'),
-		assetId: typeof body.assetId === 'string' ? body.assetId : undefined,
-		metadata: body.metadata ?? {},
-	});
+	const productId = String(body.productId ?? '');
+	const assetId = typeof body.assetId === 'string' ? body.assetId.toLowerCase() : ZANO_ASSET_ID;
+	const price = Object.hasOwn(PRODUCTS, productId) ? PRODUCTS[productId][assetId] : undefined;
+	if (!price) {
+		res.statusCode = 404;
+		res.setHeader('Content-Type', 'application/json');
+		res.end(JSON.stringify({ error: 'Unknown product' }));
+		return;
+	}
+	const result = await create({ productId, ...price, assetId, metadata: body.metadata ?? {} });
 
 	res.statusCode = 200;
 	res.setHeader('Content-Type', 'application/json');

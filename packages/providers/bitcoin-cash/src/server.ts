@@ -140,10 +140,13 @@ export function createBitcoinCashCreator(config: BitcoinCashCreatorConfig) {
 		let index = highestIndex + 1;
 		for (;;) {
 			const address = receivingAddress(account, index, prefix);
+			const label = `${paymentId}/${index}`;
 			if (!(await isWatched(rpc, address))) {
-				await rpc('importaddress', { address, label: `${paymentId}/${index}`, rescan: false });
-				highestIndex = index;
-				return address;
+				await rpc('importaddress', { address, label, rescan: false });
+				if ((await labelOf(rpc, address)) === label) {
+					highestIndex = index;
+					return address;
+				}
 			}
 			index += 1;
 		}
@@ -763,6 +766,10 @@ async function highestWatchedIndex(rpc: Rpc): Promise<number> {
 async function isWatched(rpc: Rpc, address: string): Promise<boolean> {
 	const info = await rpc<unknown>('getaddressinfo', [address]);
 	return readField(info, 'iswatchonly') === true || readField(info, 'ismine') === true;
+}
+
+async function labelOf(rpc: Rpc, address: string): Promise<string> {
+	return readString(await rpc<unknown>('getaddressinfo', [address]), 'label');
 }
 
 function rpcCaller(config: BitcoinCashRpcConfig): Rpc {

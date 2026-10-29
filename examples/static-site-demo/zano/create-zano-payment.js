@@ -14,6 +14,10 @@ import {
 } from '@aquarian-metals/coin-moebius-zano/server';
 import { myStore } from './_store.js';
 
+const PRODUCTS = {
+	'jamstack-guide': { amount: 19.99, currency: 'USD', assetId: FREEDOM_DOLLAR_ASSET_ID },
+};
+
 const create = createZanoCreator({
 	walletRpcUrl: process.env.ZANO_WALLET_RPC_URL,
 	jwtSecret: process.env.ZANO_WALLET_JWT_SECRET,
@@ -32,11 +36,15 @@ export default async (req) => {
 		return new Response('Method not allowed', { status: 405 });
 	}
 	try {
-		const { productId, amount, currency, assetId, metadata } = await req.json();
-		if (!productId || !amount || !currency) {
-			throw new Error('Missing required fields: productId, amount, currency');
+		const { productId, metadata } = await req.json();
+		const product = Object.hasOwn(PRODUCTS, productId) ? PRODUCTS[productId] : undefined;
+		if (!product) {
+			return new Response(JSON.stringify({ error: 'Unknown product' }), {
+				status: 404,
+				headers: { 'Content-Type': 'application/json' },
+			});
 		}
-		const instructions = await create({ productId, amount, currency, assetId, metadata });
+		const instructions = await create({ productId, ...product, metadata });
 		return new Response(JSON.stringify(instructions), {
 			status: 200,
 			headers: { 'Content-Type': 'application/json' },

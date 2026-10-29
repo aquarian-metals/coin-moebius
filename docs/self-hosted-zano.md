@@ -139,13 +139,16 @@ const create = createZanoCreator({
 });
 
 export default async (req) => {
-  const { productId, amount, currency, assetId, metadata } = await req.json();
-  return Response.json(await create({ productId, amount, currency, assetId, metadata }));
+  const { productId, metadata } = await req.json();
+  const price = await priceOf(productId); // from your own product list, e.g. { amount: 19.99, currency: 'USD', assetId: FREEDOM_DOLLAR_ASSET_ID }
+  if (!price) return new Response('Unknown product', { status: 404 });
+  return Response.json(await create({ productId, ...price, metadata }));
 };
 ```
 
-Two things in here are yours to decide:
+Three things in here are yours to decide:
 
+- `priceOf` looks the price up in your own product list, and says which asset it is paid in. **Never take the price or the asset from the buyer's browser.** The browser runs on the buyer's computer, so a buyer can change the amount it sends to anything, or name an asset of their own, and you would ship the product for nothing.
 - `store` is where your orders live. Any database works. It only needs to save an order and look one up by id. A stand-in that keeps orders in memory ships with the SDK for trying things out; it forgets everything when the program restarts, so use a real database for a real shop.
 - `rate` answers "how many of this coin is one unit of my price?" For a price in US dollars paid in Freedom Dollar, the answer is 1. For a price in dollars paid in ZANO, you look up the ZANO price wherever you trust and return one divided by it. Coin Moebius does not pick a price source for you.
 

@@ -88,6 +88,20 @@ export async function handleZanoWalletRpc(method, params) {
 			};
 		}
 
+		case 'get_payments': {
+			const wanted = String(params.payment_id ?? '');
+			const payments = STATE.transfers
+				.filter((t) => t.paymentReference === wanted)
+				.map((t) => ({
+					payment_id: wanted,
+					tx_hash: t.txHash,
+					amount: t.amount,
+					block_height: t.height,
+					unlock_time: 0,
+				}));
+			return payments.length > 0 ? { payments } : {};
+		}
+
 		default:
 			throw new Error(`mock-zano-wallet-rpc: method "${method}" not implemented`);
 	}

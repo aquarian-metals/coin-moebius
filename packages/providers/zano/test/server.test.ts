@@ -115,6 +115,26 @@ function makeWallet() {
 					transfers: ordered.slice(offset, offset + count),
 				};
 			}
+			case 'get_payments': {
+				const wanted = typeof params.payment_id === 'string' ? params.payment_id : '';
+				const payments: Record<string, unknown>[] = [];
+				for (const tx of state.transfers) {
+					for (const group of tx.subtransfers_by_pid ?? []) {
+						if (group.payment_id !== wanted) continue;
+						for (const one of group.subtransfers ?? []) {
+							if (one.is_income !== true) continue;
+							payments.push({
+								payment_id: wanted,
+								tx_hash: tx.tx_hash,
+								amount: one.amount,
+								block_height: tx.height,
+								unlock_time: 0,
+							});
+						}
+					}
+				}
+				return payments.length > 0 ? { payments } : {};
+			}
 			default:
 				return { __error: `no handler for ${method}` };
 		}
@@ -1508,5 +1528,202 @@ describe('a quote is rounded to something a buyer can read', () => {
 		expect(invoice.assetAmount).toBe(1.62075);
 		expect(invoice.atomicAmount).toBe(toAtomic(1.62075, 12));
 		expect(invoice.uri).toContain('amount=1.62075');
+	});
+});
+
+describe('adversarial review findings', () => {
+	const NOW = 1_700_000_000_000;
+
+	async function shop(opts: { now?: () => number; plainStore?: boolean; pageSize?: number } = {}) {
+		const wallet = makeWallet();
+		const memory = createMemoryStore();
+		const plain: PaymentStore = {
+			upsert: memory.upsert.bind(memory),
+			get: memory.get.bind(memory),
+			listPending: memory.listPending!.bind(memory),
+		};
+		const store = opts.plainStore ? plain : memory;
+		const webhookCalls: { body: string; headers: Record<string, string> }[] = [];
+		const create = createZanoCreator({
+			walletRpcUrl: WALLET_URL,
+			store,
+			fetcher: wallet.fetcher,
+			rate: async () => 1,
+		});
+		const invoice = await create({ productId: 'ebook-42', amount: 0.1, currency: 'ZANO' });
+		const indexer = createZanoIndexer({
+			walletRpcUrl: WALLET_URL,
+			store,
+			webhookUrl: WEBHOOK_URL,
+			hmacSecret: SECRET,
+			requiredConfirmations: 10,
+			fetcher: withWebhookCapture(wallet.fetcher, webhookCalls),
+			logger: silentLogger(),
+			now: opts.now ?? (() => NOW),
+			...(opts.pageSize === undefined ? {} : { pageSize: opts.pageSize, maxPages: 1 }),
+		});
+		const pay = (reference: string, amount: number, height: number, hash: string) => {
+			wallet.state.transfers.push({
+				tx_hash: txHash(hash),
+				height,
+				subtransfers_by_pid: [
+					{ payment_id: reference, subtransfers: [{ amount, is_income: true }] },
+				],
+			});
+		};
+		const payloads = () => webhookCalls.map((c) => JSON.parse(c.body) as ZanoWebhookPayload);
+		return { wallet, store: memory, webhookCalls, invoice, indexer, pay, payloads };
+	}
+
+	it("rejects another provider's message signed with a reused secret", async () => {
+		const verifier = createZanoVerifier({ hmacSecret: SECRET, now: () => NOW });
+		const foreign = {
+			provider: 'monero',
+			paymentId: 'zano_0000000000000000',
+			status: 'success',
+			timestamp: NOW,
+			invoiceAmount: 1,
+			expectedAmountAtomic: '1',
+			receivedAmountAtomic: '1',
+		};
+		const sig = await computeZanoSignature(JSON.stringify(foreign), SECRET);
+		await expect(verifier.verify(foreign, { 'x-zano-sig': sig })).rejects.toThrow(
+			/not a zano payment/,
+		);
+	});
+
+	it('never lets checkout metadata seed the fields the indexer owns', async () => {
+		const wallet = makeWallet();
+		const store = createMemoryStore();
+		const create = createZanoCreator({ walletRpcUrl: WALLET_URL, store, fetcher: wallet.fetcher });
+		const made = await create({
+			productId: 'p',
+			amount: 0.1,
+			currency: 'ZANO',
+			metadata: {
+				orderRef: 'A-17',
+				confirmations: 99,
+				txHash: 'planted',
+				receivedAtomic: '1',
+				otherAssets: [],
+			},
+		});
+		const record = await store.get(made.paymentId);
+		expect(record?.metadata.orderRef).toBe('A-17');
+		for (const key of ['confirmations', 'txHash', 'receivedAtomic', 'otherAssets']) {
+			expect(record?.metadata).not.toHaveProperty(key);
+		}
+	});
+
+	it('names the product and keeps the invoice amount on every webhook it sends', async () => {
+		const ctx = await shop();
+		const record = (await ctx.store.get(ctx.invoice.paymentId))!;
+		await ctx.store.upsert({ ...record, status: 'failed', amount: 0 });
+		ctx.pay(ctx.invoice.paymentReference, 100_000_000_000, ctx.wallet.state.height - 10, 'full');
+
+		await ctx.indexer.tick();
+		const settled = ctx.payloads().at(-1)!;
+		expect(settled.status).toBe('success');
+		expect(settled.productId).toBe('ebook-42');
+		expect(settled.invoiceAmount).toBe(0.1);
+		expect((await ctx.store.get(ctx.invoice.paymentId))?.amount).toBe(0.1);
+	});
+
+	it('never settles dust as paid when the stored invoice amount was overwritten', async () => {
+		const ctx = await shop();
+		const record = (await ctx.store.get(ctx.invoice.paymentId))!;
+		await ctx.store.upsert({
+			...record,
+			metadata: {
+				address: ctx.invoice.address,
+				paymentReference: ctx.invoice.paymentReference,
+				txHash: null,
+				confirmations: 0,
+			},
+		});
+		ctx.pay(ctx.invoice.paymentReference, 1, ctx.wallet.state.height - 10, 'dust');
+
+		const result = await ctx.indexer.tick();
+		expect((await ctx.store.get(ctx.invoice.paymentId))?.status).toBe('pending');
+		expect(result.errors.join(' ')).toContain('no atomicAmount');
+	});
+
+	it('settles an order whose store hands the amount back as a number', async () => {
+		const ctx = await shop();
+		const record = (await ctx.store.get(ctx.invoice.paymentId))!;
+		await ctx.store.upsert({
+			...record,
+			metadata: { ...record.metadata, atomicAmount: 100_000_000_000 },
+		});
+		ctx.pay(ctx.invoice.paymentReference, 100_000_000_000, ctx.wallet.state.height - 10, 'full');
+
+		await ctx.indexer.tick();
+		expect((await ctx.store.get(ctx.invoice.paymentId))?.status).toBe('success');
+	});
+
+	it('settles a confirmed full payment even while a later transfer is still unconfirmed', async () => {
+		const ctx = await shop();
+		ctx.pay(ctx.invoice.paymentReference, 100_000_000_000, ctx.wallet.state.height - 10, 'full');
+		ctx.pay(ctx.invoice.paymentReference, 1000, 0, 'stuck-dust');
+
+		await ctx.indexer.tick();
+		expect((await ctx.store.get(ctx.invoice.paymentId))?.status).toBe('success');
+		expect(ctx.payloads().at(-1)?.receivedAmountAtomic).toBe('100000000000');
+	});
+
+	it('still waits on an unconfirmed transfer before calling a short payment partial', async () => {
+		const ctx = await shop();
+		ctx.pay(ctx.invoice.paymentReference, 50_000_000_000, ctx.wallet.state.height - 10, 'half');
+		ctx.pay(ctx.invoice.paymentReference, 50_000_000_000, 0, 'other-half');
+
+		await ctx.indexer.tick();
+		expect((await ctx.store.get(ctx.invoice.paymentId))?.status).toBe('pending');
+		expect(ctx.payloads().at(-1)?.status).toBe('pending');
+	});
+
+	it('settles a late payment on an expired invoice even when the store cannot claim announcements', async () => {
+		let currentTime = NOW;
+		const ctx = await shop({ now: () => currentTime, plainStore: true });
+
+		currentTime = ctx.invoice.expiresAt + 1000;
+		await ctx.indexer.tick();
+		expect((await ctx.store.get(ctx.invoice.paymentId))?.status).toBe('failed');
+
+		ctx.pay(ctx.invoice.paymentReference, 100_000_000_000, ctx.wallet.state.height - 10, 'late');
+		await ctx.indexer.tick();
+		expect((await ctx.store.get(ctx.invoice.paymentId))?.status).toBe('success');
+		await ctx.indexer.tick();
+		expect(ctx.payloads().filter((p) => p.status === 'success')).toHaveLength(1);
+	});
+
+	it('never fails an invoice whose money landed outside the lookback window', async () => {
+		let currentTime = NOW;
+		const ctx = await shop({ now: () => currentTime, pageSize: 1 });
+		ctx.pay('0000000000000000', 1, ctx.wallet.state.height - 5, 'someone-else');
+		ctx.pay(ctx.invoice.paymentReference, 100_000_000_000, ctx.wallet.state.height - 1000, 'old');
+
+		currentTime = ctx.invoice.expiresAt + 1000;
+		await ctx.indexer.tick();
+
+		expect((await ctx.store.get(ctx.invoice.paymentId))?.status).toBe('pending');
+		expect(ctx.payloads().map((p) => p.status)).not.toContain('failed');
+		expect(ctx.wallet.state.calls.some((c) => c.method === 'get_payments')).toBe(true);
+	});
+
+	it('gives up on a wallet that never answers instead of stalling the tick', async () => {
+		const hanging: typeof fetch = async (_input, init) =>
+			new Promise<Response>((_resolve, reject) => {
+				init?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+			});
+		const indexer = createZanoIndexer({
+			walletRpcUrl: WALLET_URL,
+			store: createMemoryStore(),
+			webhookUrl: WEBHOOK_URL,
+			hmacSecret: SECRET,
+			fetcher: hanging,
+			requestTimeoutMs: 20,
+		});
+		const result = await indexer.tick();
+		expect(result.errors).toHaveLength(1);
 	});
 });

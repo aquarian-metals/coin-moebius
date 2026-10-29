@@ -77,9 +77,12 @@ const create = createMoneroCreator({
 });
 
 export default async (req) => {
-  const { productId, amount, currency, metadata } = await req.json();
-  const instructions = await create({ productId, amount, currency, metadata });
-  return Response.json(instructions);
+  const { productId, metadata } = await req.json();
+  // Price from your own catalog, never from the request: the browser is the
+  // buyer's, and a buyer can send any amount they like.
+  const price = await priceOf(productId);
+  if (!price) return new Response('Unknown product', { status: 404 });
+  return Response.json(await create({ productId, ...price, metadata }));
 };
 ```
 
