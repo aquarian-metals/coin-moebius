@@ -1,6 +1,6 @@
 {
 	"name": "@aquarian-metals/coin-moebius-bitcoin",
-	"version": "4.5.0",
+	"version": "4.5.1",
 	"description": "Self-hosted Bitcoin provider for Coin Moebius — direct Bitcoin Core RPC integration. No third-party gateway, no custodial keys, no API tokens. The merchant runs bitcoind and a small indexer; this package supplies the browser provider, the server-side creator (a fresh address per checkout), the webhook verifier, and the indexer factory.",
 	"keywords": [
 		"payments",
@@ -51,10 +51,10 @@
 		"node": ">=18"
 	},
 	"dependencies": {
-		"@aquarian-metals/coin-moebius-core": "^4.5.0"
+		"@aquarian-metals/coin-moebius-core": "^4.5.1"
 	},
 	"devDependencies": {
-		"@aquarian-metals/coin-moebius-server": "^4.5.0",
+		"@aquarian-metals/coin-moebius-server": "^4.5.1",
 		"typescript": "~5.8.0"
 	},
 	"publishConfig": {
