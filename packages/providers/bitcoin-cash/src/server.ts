@@ -345,9 +345,7 @@ export function createBitcoinCashIndexer(config: BitcoinCashIndexerConfig): Bitc
 	): Promise<boolean> {
 		const record = await config.store.get(paymentId);
 		if (record?.provider !== 'bitcoin-cash') return false;
-		if (record.status === 'success' || record.status === 'partial') {
-			return false;
-		}
+		if (record.status === 'success') return false;
 
 		const address = readStringMetadata(record, 'address');
 		const counted = receipts.filter((receipt) => receipt.address === address);
@@ -561,7 +559,11 @@ export function createBitcoinCashIndexer(config: BitcoinCashIndexerConfig): Bitc
 		}
 		const fresh = await config.store.get(paymentId);
 		if (!fresh) return false;
-		return fresh.status === 'pending' || (fresh.status === 'failed' && status !== 'failed');
+		return (
+			fresh.status === 'pending' ||
+			(fresh.status === 'failed' && status !== 'failed') ||
+			(fresh.status === 'partial' && status === 'success')
+		);
 	}
 
 	async function announce(

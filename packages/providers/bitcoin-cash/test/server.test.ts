@@ -869,6 +869,22 @@ describe('createBitcoinCashIndexer', () => {
 		expect(record?.amount).toBeCloseTo(0.001, 10);
 	});
 
+	it('tick(): settles a partial order once the rest arrives and confirms', async () => {
+		const ctx = await setup();
+		ctx.pay(ctx.second, { amount: 0.001 });
+		await ctx.indexer.tick();
+		expect(lastPayload(ctx).status).toBe('partial');
+
+		ctx.pay(ctx.second, { amount: 0.0015, hash: 'rest' });
+		await ctx.indexer.tick();
+		const payload = lastPayload(ctx);
+		expect(payload.status).toBe('success');
+		expect(payload.receivedAmountAtomic).toBe('250000');
+		const record = await ctx.store.get(ctx.second.paymentId);
+		expect(record?.status).toBe('success');
+		expect(record?.amount).toBeCloseTo(0.0025, 10);
+	});
+
 	it('tick(): sums several payments to one address and gates on the slowest', async () => {
 		const ctx = await setup();
 		ctx.pay(ctx.second, { amount: 0.0015, height: ctx.node.state.height - 5 });

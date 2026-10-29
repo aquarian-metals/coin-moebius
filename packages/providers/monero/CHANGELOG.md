@@ -1,5 +1,11 @@
 # @aquarian-metals/coin-moebius-monero
 
+## 4.5.1
+
+### Patch Changes
+
+- **A short payment that is topped up now settles.** Once the indexer had reported an order as `partial`, it stopped looking at that order, so the rest of the money was never reported and the store was never told to deliver. It now keeps watching and reports `success` when the confirmed total reaches the invoice.
+
 ## 4.5.0
 
 ### Patch Changes

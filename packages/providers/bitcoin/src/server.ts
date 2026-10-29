@@ -532,9 +532,7 @@ export function createBitcoinIndexer(config: BitcoinIndexerConfig): BitcoinIndex
 		if (record?.provider !== 'bitcoin') return false;
 		// `failed` is not terminal: an expired invoice whose money turns up days
 		// later still settles. Telling that buyer to start over makes them pay twice.
-		if (record.status === 'success' || record.status === 'partial') {
-			return false;
-		}
+		if (record.status === 'success') return false;
 
 		const address = readStringMetadata(record, 'address');
 		const counted = receipts.filter((receipt) => receipt.address === address);
@@ -762,7 +760,11 @@ export function createBitcoinIndexer(config: BitcoinIndexerConfig): BitcoinIndex
 		if (!fresh) return false;
 		// An invoice marked failed at expiry can still be paid late, and that
 		// money has to be announced; only a second `failed` is a duplicate.
-		return fresh.status === 'pending' || (fresh.status === 'failed' && status !== 'failed');
+		return (
+			fresh.status === 'pending' ||
+			(fresh.status === 'failed' && status !== 'failed') ||
+			(fresh.status === 'partial' && status === 'success')
+		);
 	}
 
 	/**

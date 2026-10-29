@@ -594,9 +594,7 @@ export function createMoneroIndexer(config: MoneroIndexerConfig): MoneroIndexer 
 		}
 		// `failed` is not terminal: an expired invoice whose money turns up days
 		// later still settles. Telling that buyer to start over makes them pay twice.
-		if (record.status === 'success' || record.status === 'partial') {
-			return false;
-		}
+		if (record.status === 'success') return false;
 
 		const expectedAtomic = readAtomicMetadata(record);
 		if (expectedAtomic <= 0n) {
@@ -865,7 +863,11 @@ export function createMoneroIndexer(config: MoneroIndexerConfig): MoneroIndexer 
 		// resend, too).
 		const fresh = await config.store.get(paymentId);
 		if (!fresh) return false;
-		return fresh.status === 'pending' || (fresh.status === 'failed' && status !== 'failed');
+		return (
+			fresh.status === 'pending' ||
+			(fresh.status === 'failed' && status !== 'failed') ||
+			(fresh.status === 'partial' && status === 'success')
+		);
 	}
 
 	/**

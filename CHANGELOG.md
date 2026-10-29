@@ -13,6 +13,7 @@ caret range like `^4.2.0` rolls the whole family forward together.
 
 ### Fixed
 
+- **A short Bitcoin, Bitcoin Cash, Monero, or Zano payment that is topped up now settles.** Once an indexer had reported an order as `partial`, it stopped looking at that order, so the rest of the money, which every checkout screen tells the buyer to send to the same address, landed in the merchant's wallet and was never reported. The store was never told to deliver. The indexers now keep watching a partial order and report `success` when the confirmed total reaches the invoice.
 - **The Bitcoin Cash server entry loads its key library only when the creator first hands out an address.** The library compiles its hashing and key code as WebAssembly the moment it is imported, and some JavaScript runtimes refuse WebAssembly compiled at run time, so a program that only verifies webhooks could not import the entry at all. The verifier and `computeBitcoinCashSignature` now load without it. A bad xpub is reported on the first checkout instead of when the creator is made.
 
 ## [4.5.0] — 2026-10-28

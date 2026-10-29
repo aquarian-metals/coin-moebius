@@ -1710,6 +1710,19 @@ describe('adversarial review findings', () => {
 		expect(ctx.wallet.state.calls.some((c) => c.method === 'get_payments')).toBe(true);
 	});
 
+	it('settles a partial order once the rest arrives and confirms', async () => {
+		const ctx = await shop();
+		ctx.pay(ctx.invoice.paymentReference, 40_000_000_000, ctx.wallet.state.height - 10, 'first');
+		await ctx.indexer.tick();
+		expect(ctx.payloads().at(-1)?.status).toBe('partial');
+
+		ctx.pay(ctx.invoice.paymentReference, 60_000_000_000, ctx.wallet.state.height - 10, 'rest');
+		await ctx.indexer.tick();
+		expect(ctx.payloads().at(-1)?.status).toBe('success');
+		expect(ctx.payloads().at(-1)?.receivedAmountAtomic).toBe('100000000000');
+		expect((await ctx.store.get(ctx.invoice.paymentId))?.status).toBe('success');
+	});
+
 	it('gives up on a wallet that never answers instead of stalling the tick', async () => {
 		const hanging: typeof fetch = async (_input, init) =>
 			new Promise<Response>((_resolve, reject) => {
