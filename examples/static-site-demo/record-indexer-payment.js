@@ -24,18 +24,9 @@ export async function recordIndexerPayment(store, result, fulfillOnce) {
 	};
 	await store.upsert(order);
 	if (result.status !== 'success') return new Response('');
-	// Keep the delivery claim separate from the indexer's webhook announcement.
-	const claim = 'fulfillment/' + order.provider + '/' + order.paymentId;
-	if (store.markStatusAnnounced && store.unmarkStatusAnnounced) {
-		if (!(await store.markStatusAnnounced(claim, 'success'))) return new Response('');
-		try {
-			await fulfillOnce(order);
-		} catch (error) {
-			await store.unmarkStatusAnnounced(claim, 'success');
-			throw error;
-		}
-	} else {
-		await fulfillOnce(order);
-	}
+	// A delivery marker written before the grant can strand a paid buyer after a crash.
+	// The grant itself must be idempotent, using the saved order ID as its unique key.
+	const current = await store.get(order.paymentId);
+	if (current?.status === 'success') await fulfillOnce(current);
 	return new Response('');
 }

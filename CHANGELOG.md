@@ -9,6 +9,13 @@ caret range like `^4.2.0` rolls the whole family forward together.
 
 ## [Unreleased]
 
+### Payment verification and delivery
+
+- Stripe keeps a completed checkout pending until the payment qualifies for delivery. Merchants accepting delayed methods should enable both asynchronous Checkout payment events.
+- Checkout examples use the merchant catalog for prices, match webhook results to a stored order, and require a private signing key for each configured self-hosted receiver. Update copied examples separately from installed packages.
+- Cryptomus and Authorize.Net payment evidence, manual receipts, MakePay cancellation handling and the provider starter now use the stricter rules described in [the payment security review](docs/payment-security-review.md). Configure the Authorize.Net account currency when it differs from USD.
+- A retried self-hosted payment can finish granting access after a worker restart. The merchant's grant operation must enforce one entitlement per order in durable storage.
+
 ## [4.5.1] — 2026-10-28
 
 ### Fixed

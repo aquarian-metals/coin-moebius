@@ -48,7 +48,7 @@ A provider inventory test fails when a new package lacks an entry describing how
 
 ### Verification results
 
-On Node 24, the local `npm run verify` workflow passed formatting, all workspace builds, lint, type checking, coverage thresholds, package export checks and browser bundle budgets. The final suite passed 809 tests across 39 files. The same 809 tests also passed locally on Node 22.23.4, the major version used by CI. The checkout was based on local main at `89648ef`; remote GitHub was unreachable from this workspace.
+On Node 24, the local `npm run verify` workflow passed formatting, all workspace builds, lint, type checking, coverage thresholds, package export checks and browser bundle budgets. The follow-up suite passed 810 tests across 40 files, including recovery when a worker stops before granting a download and when it loses the response after granting it. The same 810 tests also passed locally on Node 22.23.4, the major version used by CI. The checkout was based on local main at `89648ef`; remote GitHub was unreachable from this workspace.
 
 ## Release testing policy
 
@@ -69,7 +69,7 @@ Stripe documents delayed Checkout settlement and provides test payment methods. 
 3. Subscribe Stripe endpoints to completed checkout, asynchronous success and asynchronous failure. For Authorize.Net, set the account currency and reconcile fraud-approved holds against the transaction record before delivery.
 4. For an installation that ran an affected version, compare delivered orders with the provider's settled status and the original catalog price and currency. Start with delayed Stripe payments and orders created by the two affected checkout examples. Separate free orders, authorized discounts and refunds before treating a discrepancy as a loss.
 
-The external sandbox and durable-database checks above are recommended release gates. The local tests use fixture credentials and an in-memory store. The branch has not been published, and production exposure has not been measured.
+The provider sandbox and production-adapter checks above remain release gates. The gateway tests use fixture credentials. The standalone delivery test also uses an on-disk SQLite database and reopens it after failures. The branch has not been published, and production exposure has not been measured.
 
 ## Primary references
 

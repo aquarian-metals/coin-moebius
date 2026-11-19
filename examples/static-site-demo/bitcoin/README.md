@@ -112,3 +112,5 @@ Keep in mind:
 | `_store.js`                 | Both                                        | A stand-in for your real order database.                                           |
 | `bitcoin-indexer.service`   | `/etc/systemd/system/` on the node's server | Keeps `node indexer.js` running as a service.                                      |
 | `docker-compose.yml`        | Anywhere with Docker                        | Optional all-in-one start.                                                         |
+
+The receiver imports `../record-indexer-payment.js`. Include that shared module when copying the example, and connect `_store.js` to the same durable order database as checkout and the indexer. Implement the grant with a unique order ID so retries return the existing entitlement.

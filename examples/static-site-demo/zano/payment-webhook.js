@@ -32,6 +32,8 @@ export default async (req) => {
 	}
 };
 
+// This callback may run again after a restart or lost reply. Insert the grant
+// under a unique order ID using the buyer recorded at checkout.
 async function onPaymentSucceeded(result) {
 	// Replace with your real fulfilment.
 	console.log(

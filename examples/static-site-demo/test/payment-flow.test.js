@@ -242,7 +242,7 @@ describe('standalone self-hosted examples', () => {
 			recordIndexerPayment(store, paid, deliver),
 			recordIndexerPayment(store, paid, deliver),
 		]);
-		expect(deliver).toHaveBeenCalledOnce();
+		expect(deliver).toHaveBeenCalledTimes(2);
 		expect(deliver).toHaveBeenCalledWith(
 			expect.objectContaining({
 				metadata: expect.objectContaining({ productId: 'guide', invoiceAmount: 3 }),

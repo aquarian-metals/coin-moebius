@@ -26,6 +26,8 @@ export default async (req) => {
 	}
 };
 
+// This callback may run again after a restart or lost reply. Insert the grant
+// under a unique order ID using the buyer recorded at checkout.
 async function onPaymentSucceeded(order) {
 	console.log(
 		`[payment-webhook] paid: ${order.paymentId} ${order.metadata.productId} ${order.metadata.receivedAmountBch} BCH`,
