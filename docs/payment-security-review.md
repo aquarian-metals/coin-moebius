@@ -40,27 +40,44 @@ The Stripe test named for unpaid delayed checkout supplied an **open** session. 
 
 The test configuration discovered package tests and measured package source coverage. It skipped the demo handlers and the instructions merchants copy. Signature tests could pass while the demo chose a public secret, and provider tests could pass while the checkout route trusted the browser. An Authorize.Net test even required the old fraud-approval behavior. A higher coverage percentage alone would have preserved that mistake.
 
-## How to discover missing cases before implementation
+## How to discover missing payment cases
 
-The earlier audit identified coverage gaps and added regressions. The following is a proposed review practice for changes to checkout, verification, or delivery. The author records the scenarios in the pull request. A second reviewer challenges them before release. This practice is not enforced by the current CI.
+### Start from the provider contract and merchant rules
 
-1. **Write the merchant's promise first.** For a paid download, only the buyer on the saved order may receive the purchased item, once the agreed price in the agreed currency has been paid. A retry must still let that buyer receive it. List any deliberate exception, such as a merchant-authorized free order, separately.
-2. **List the facts that can change independently.** Use the provider's current event documentation, a sanitized sandbox event when available, and the merchant's actual checkout and delivery steps. Record which system owns each fact. For Stripe, checkout completion and payment settlement are separate facts. For pricing, the browser's display price and the merchant's saved quote are separate facts. Building this list from the implementation alone risks copying its assumptions into the tests.
-3. **Generate cases by changing one fact at a time.** Begin with a valid paid order. Keep everything else valid while changing the buyer, product, amount, currency, provider, payment state, or order reference. For each fact required for delivery, include a case where it is missing. Write down the expected access decision before inspecting the code. Then combine facts that different systems control or that can change at different times. Prioritize combinations that could release goods early, grant access to the wrong buyer, or strand a buyer who paid.
-4. **Walk through time as well as values.** Start with the same order and vary what arrives first, what arrives twice, what never arrives, and where the process can stop. At each step record the order state and who can download. Cover recovery as well as refusal. For example, if the browser has returned, the checkout is complete, and the bank payment is pending, the buyer should see pending and have zero grants. Later success should produce one grant even if the buyer closed the browser. Later failure should produce zero.
-5. **Give the reviewer a concrete challenge.** Before reading the implementation, the reviewer uses the provider source and the merchant promise to propose a plausible case missing from the author's list. The review records the case, expected outcome, and test, or the documented reason the case cannot occur. Each relevant row links to an automated test or dated sandbox result. An unverified high-impact row stays open. When a new case is found, check other providers and copied examples that make the same assumption.
+Stripe's Checkout Session reference explicitly allows processing to continue after checkout completes. Its fulfillment guide describes delayed success and failure. These sources would have identified the complete-but-unpaid case before the defect report. For each provider, record the source URL, supported API version or review date, and the precise evidence that authorizes delivery. Revisit that record when a payment method, provider API, or fulfillment rule changes. [Stripe Session reference](https://docs.stripe.com/api/checkout/sessions/object) · [Stripe fulfillment](https://docs.stripe.com/checkout/fulfillment)
 
-Start with this question sheet for each affected flow:
+OWASP identifies separate checks for trusted pricing, callback authenticity, payment status, order identity, amount, currency and repeat delivery. Use those as inputs to the merchant's decision. For self-hosted payments, document how the trusted indexer establishes confirmed funds. For manual payments, document who may confirm receipt and what amount qualifies. [OWASP payment gateway integration](https://cheatsheetseries.owasp.org/cheatsheets/Third_Party_Payment_Gateway_Integration_Cheat_Sheet.html)
 
-| Ask before writing the test                                 | Example case the question uncovers                                                                           |
-| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| Which two facts are we assuming always agree?               | Checkout is complete while payment is unpaid.                                                                |
-| Who supplied each value, and what if two sources disagree?  | A valid product ID arrives with a browser price that differs from the saved quote.                           |
-| What if genuine evidence belongs to another order or buyer? | A real paid event has the correct amount and currency but belongs to a different checkout.                   |
-| What can happen between two successful steps?               | The grant commits and the worker stops before acknowledging it. A retry must preserve one grant.             |
-| Which legitimate customer could a stricter rule block?      | A partial payment receives a later top-up, or a merchant-authorized discount reduces the amount due to zero. |
+### Use a decision table for permission to deliver
 
-For changes to the decision that grants access, also check the strength of the tests locally: temporarily remove one required check from the decision, confirm its named test fails, then restore it. If the suite still passes, the asserted outcome or the scenario is incomplete. This is a proposed release check; the audit did not run a mutation-testing campaign.
+ISTQB defines decision-table coverage by the feasible rules exercised. This gives a reviewer a denominator. The following are example rules for a positive-price, one-time digital purchase. A merchant-approved free order needs its own rule. [ISTQB Foundation Level syllabus, §§4.2.3–4.2.4](https://istqb.org/wp-content/uploads/2024/11/ISTQB_CTFL_Syllabus_v4.0.1.pdf)
+
+| Example evidence or condition                                     | Expected observable result                                                                   |
+| ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Known product, browser price or currency differs from catalog     | Gateway request and stored order use the server quote. Checkout alone grants zero downloads. |
+| Verification credential absent or blank outside local simulation  | Receiver cannot accept the notification. The saved order and existing grants are unchanged.  |
+| Authentic event, checkout complete, payment unpaid                | Order remains pending. Download is unavailable.                                              |
+| Authentic paid event, provider, order, amount or currency differs | No grant for the requested order. Exercise each mismatch independently.                      |
+| Matching paid order, recorded buyer requests the file             | Exactly one entitlement for that order. The recorded buyer can retrieve the file.            |
+| Same paid order, a different buyer requests the file              | Access is denied even though payment succeeded.                                              |
+
+### Use a state table for what can happen next
+
+ISTQB's state-transition technique tests sequences and makes invalid transitions visible. Stripe documents that events can arrive out of order. Write the allowed result for each relevant pair of current state and incoming event, then test the actual order, access decision, and number of grants after each step. [ISTQB syllabus, §4.2.4](https://istqb.org/wp-content/uploads/2024/11/ISTQB_CTFL_Syllabus_v4.0.1.pdf) · [Stripe webhook delivery](https://docs.stripe.com/webhooks#event-ordering)
+
+For delayed Stripe payments, exercise pending → paid and pending → failed. After success, exercise duplicate success and late pending. Close the browser before confirmation. Retry both after the order was saved but before the grant and after the grant but before acknowledgment. The expected grant counts are zero while unpaid or failed and one after eligible success. Refunds and disputes need explicit merchant rules for existing access.
+
+### Cover interactions and test the tests
+
+For a large matrix, NIST describes generating cases that exercise combinations of input values. For this SDK, exhaust the small fulfillment decision table first. Use pairwise coverage for the broader configuration matrix and explicitly add higher-order cases where several conditions jointly determine access. Pair coverage alone cannot establish the result for every three-way interaction. One priority combination is a delayed method, an early browser return, and a later failed payment. [NIST SP 800-142, Practical Combinatorial Testing](https://www.nist.gov/publications/practical-combinatorial-testing)
+
+Mutation testing checks whether the suite detects a deliberate change in behavior. A candidate check for this project is to weaken one fulfillment condition in an isolated build and require the corresponding test to fail. Investigate surviving changes that alter the merchant outcome. This review did not run mutation testing. [Stryker mutation testing](https://stryker-mutator.io/docs/)
+
+### Proposed release evidence and current gap
+
+For each changed provider, attach its decision and state tables to the review. Map each feasible rule and selected transition to a test, a dated sandbox observation, or a specific open gap. Explain excluded combinations. Refresh the fixtures from sanitized provider sandbox events when the contract changes. Run shared checkout rules against copyable handlers as well as provider packages. For a changed delivery path, test the protected download endpoint as both the recorded buyer and a second buyer.
+
+In this branch, the Stripe route test checks the status poll after matching, mismatched, delayed and duplicate events. The SQLite delivery test counts entitlement rows after restart and retry. Those tests answer different questions. Neither exercises a buyer fetching a protected file through the hosted endpoint. That end-to-end check remains open in this audit. The proposed coverage criteria above are not currently enforced across all providers.
 
 ## Tests in this branch
 
