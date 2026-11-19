@@ -21,12 +21,6 @@ export default defineConfig({
 				// Pure type files have no runtime to cover.
 				'packages/core/src/types.ts',
 				'packages/server/src/types.ts',
-				// Template is a copy-and-rename starter; not tested directly.
-				'packages/providers/template/**',
-				// NOWPayments client provider's `onError` callback wrapper path
-				// is best-tested end-to-end against a real backend, not via the
-				// SDK's unit tests. Excluding to keep the threshold honest until
-				// we add a dedicated unit test.
 			],
 			thresholds: {
 				statements: 90,

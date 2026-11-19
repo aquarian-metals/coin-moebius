@@ -20,8 +20,6 @@ const rootPkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'));
 
 const workspaces = rootPkg.workspaces
 	.filter((p) => p.startsWith('packages/'))
-	// Exclude the provider-template package — it's a starter copy, never published.
-	.filter((p) => !p.endsWith('/template'))
 	// Exclude the buy package — it ships prebuilt `<script>` bundles only, no
 	// types, so there's nothing for attw to resolve.
 	.filter((p) => p !== 'packages/buy');

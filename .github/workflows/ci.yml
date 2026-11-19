@@ -84,5 +84,7 @@ jobs:
       - run: npm run build
       - name: Are The Types Wrong?
         run: npm run attw
+      - name: Test installed public packages
+        run: npm run test:packed
       - name: Bundle size budgets
         run: npm run size

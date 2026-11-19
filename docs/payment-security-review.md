@@ -1,6 +1,6 @@
 # Coin Moebius SDK payment security review
 
-November 19, 2026 · Local SDK v4.5.1, base commit `89648ef` · Branch `fix/payment-verification`
+November 19, 2026 · Local SDK v4.5.1, base commit `89648ef` · Follow-up branch `review/payment-lifecycle`
 
 ## What was at risk
 
@@ -104,6 +104,40 @@ Provider contracts used for this pass include the [Stripe invoice parent migrati
 The saved Cloud source confirms that the hosted download route accepts a transaction-specific signed receipt link without buyer login. An eligible link supports repeated retrieval. A revoked link returns 410. Test transactions cannot deliver files. The hosted Worker integration run remains outstanding.
 
 **Decision for billing.** Keep the SDK candidate in review until the provider sandbox, real-node and Worker integration gates above have recorded results for the candidate revision. Then apply the same review to Coin Moebius billing in a test environment. Reconcile each fee or subscription invoice with its stored ledger entry and resulting account access. Include threshold crossing, renewal, delayed and failed collection, duplicate notifications, refund or reversal, and recovery after interruption. Record expected amounts, ledger entry counts and access after each step. Production billing activation is a separate decision after those results are available.
+
+### Public package and storefront tests
+
+This pass used the publish script and package manifests to identify all 18 public packages in the SDK checkout. That includes the provider starter, which the previous type-package check skipped. The separate Cloud-owned storefront SDK ships as two CDN scripts and has its own version. The public registry could not be queried to independently reconcile the inventory or verify previously published binaries.
+
+For the npm consumer test, each SDK package was packed and installed into a temporary project outside the workspace. All 33 executable package entry points loaded. The existing package behavior tests were run against those installed exports with the required Stripe peer available. Pull requests and the local release verification command now run this check. The 25 additional demo tests exercise checkout, webhook, polling and fulfillment examples in the source workspace.
+
+| SDK package or example                 | Passing cases per source run |
+| -------------------------------------- | ---------------------------: |
+| `examples/static-site-demo`            |                           25 |
+| `packages/coin-moebius`                |                            3 |
+| `packages/core`                        |                           29 |
+| `packages/providers/authorizenet`      |                           43 |
+| `packages/providers/bitcoin`           |                           88 |
+| `packages/providers/bitcoin-cash`      |                           96 |
+| `packages/providers/coinbase-business` |                           41 |
+| `packages/providers/cryptomus`         |                           24 |
+| `packages/providers/dodopayments`      |                           47 |
+| `packages/providers/makepay`           |                           31 |
+| `packages/providers/manual`            |                           28 |
+| `packages/providers/monero`            |                           62 |
+| `packages/providers/nowpayments`       |                           22 |
+| `packages/providers/paypal`            |                           54 |
+| `packages/providers/square`            |                           43 |
+| `packages/providers/stripe`            |                           59 |
+| `packages/providers/template`          |                            2 |
+| `packages/providers/zano`              |                          102 |
+| `packages/server`                      |                           29 |
+
+The source suite passed 828 cases, including the demo. The installed-package suite passed the same 803 package cases on Node 22.23.4 and Node 24.22.1. The source suite passed on both versions. Node 24 source coverage measured 97.62% of executable lines and 86.18% of branches. Direct tests now cover currency conversions, all 36 pairs of lifecycle ranks, and releasing a failed delivery claim for retry. The starter also runs under coverage. Its checkout script loader previously reused a failed script tag on retry. The new test checks that it makes a fresh attempt and never grants payment.
+
+The separate storefront SDK v3.3.6 passed type checking and all 194 local tests. Its CDN build succeeded, the archive preservation test passed, and both newly built bundles registered the buy button when evaluated as classic scripts in a simulated DOM. The global build also exposed its documented namespace. A Chromium process aborted during launch before loading the bundles. Browser-engine checkout and a comparison to the deployed CDN are outstanding.
+
+**Remaining evidence before billing.** The public package runs use local fixtures. For each gateway adapter, record a test-provider transaction or the provider-specific available equivalent and its limitations. For wallet adapters, record a controlled node or wallet run with confirmation, partial payment and restart. For Manual, verify the merchant confirmation and delivery path. The starter intentionally stops before checkout. The Cryptomus sandbox credentials were absent from this process. Bitcoin regtest and hosted Worker integration still require an environment that can open local sockets. Only Node 22 and 24 were exercised here, although the public SDK manifests allow Node 18 and later. No result in this section establishes that production billing can be enabled.
 
 ### 4.5.2 release attempt
 

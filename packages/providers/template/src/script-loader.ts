@@ -41,6 +41,7 @@ export function ensureScriptLoaded(
 		});
 		script.addEventListener('error', () => {
 			clearTimeout(timer);
+			if (isNew) script.remove();
 			reject(new Error(`Failed to load script: ${src}`));
 		});
 
