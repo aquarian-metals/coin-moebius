@@ -50,6 +50,12 @@ A provider inventory test fails when a new package lacks an entry describing how
 
 On Node 24, the local `npm run verify` workflow passed formatting, all workspace builds, lint, type checking, coverage thresholds, package export checks and browser bundle budgets. The follow-up suite passed 810 tests across 40 files, including recovery when a worker stops before granting a download and when it loses the response after granting it. The same 810 tests also passed locally on Node 22.23.4, the major version used by CI. The checkout was based on local main at `89648ef`; remote GitHub was unreachable from this workspace.
 
+### 4.5.2 release attempt
+
+The provisional patch version is 4.5.2. An isolated build at that version passed npm packing checks for all 18 public packages. A dry run compiled the hosted API Worker from the locally cached production branch and its build manifest included the patched Stripe verifier. Separate Monero and Zano wallet simulations each went from pending checkout through a verified webhook to confirmed payment.
+
+The release script stopped during the npm identity check because the shell could not resolve the registry. GitHub's hostname also failed to resolve. No npm publish, remote tag, GitHub push, or hosted deployment took place. External provider sandbox settlement remains unverified. Bitcoin Core regtest and the hosted Worker's integration tests could not open their local listening sockets in this environment.
+
 ## Release testing policy
 
 | When                                                             | What to run                                                                                                                                                                                                                                                       | Passing result                                                                                                                                                                                                                 |
