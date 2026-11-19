@@ -437,31 +437,28 @@ describe('createStripeVerifier', () => {
 		expect(result?.status).toBe('success');
 	});
 
-	it('treats an unpaid checkout.session.completed as pending (async payment in progress, e.g. ACH)', async () => {
-		// Neither `payment_status === 'paid'` nor `status === 'complete'` — but
-		// it IS a Checkout event for a Checkout-mode purchase, so we keep
-		// tracking it as pending (delayed payment methods land later via a
-		// follow-up checkout.session.async_payment_succeeded etc.).
-		const verify = createStripeVerifier({ endpointSecret: ENDPOINT_SECRET });
-		const event = {
-			id: 'evt_unpaid',
-			object: 'event',
-			type: 'checkout.session.completed',
-			data: {
-				object: {
-					id: 'cs_unpaid',
-					object: 'checkout.session',
-					payment_status: 'unpaid',
-					status: 'open',
+	it.each([
+		['checkout.session.completed', 'unpaid', 'payment', 1999, 'pending'],
+		['checkout.session.async_payment_succeeded', 'paid', 'payment', 1999, 'success'],
+		['checkout.session.async_payment_failed', 'unpaid', 'payment', 1999, 'failed'],
+		['checkout.session.async_payment_succeeded', 'unpaid', 'payment', 1999, 'pending'],
+		['checkout.session.completed', 'no_payment_required', 'payment', 0, 'success'],
+		['checkout.session.completed', 'no_payment_required', 'payment', 1999, 'pending'],
+		['checkout.session.completed', 'no_payment_required', 'setup', 0, undefined],
+		['checkout.session.async_payment_succeeded', 'paid', 'subscription', 1999, undefined],
+	])(
+		'maps %s with %s in %s mode (%s) to %s',
+		async (type, payment_status, mode, amount_total, expected) => {
+			const verify = createStripeVerifier({ endpointSecret: ENDPOINT_SECRET });
+			const { body, headers } = signedRequest({
+				type,
+				data: {
+					object: { id: 'cs_delayed', status: 'complete', mode, payment_status, amount_total },
 				},
-			},
-		};
-		const { body, headers } = signedRequest(event);
-		const result = asPayment(await verify(body, headers));
-		expect(result).not.toBeNull();
-		expect(result!.status).toBe('pending');
-		expect(result!.paymentId).toBe('cs_unpaid');
-	});
+			});
+			expect(asPayment(await verify(body, headers))?.status).toBe(expected);
+		},
+	);
 
 	it('falls back to defaults when amount_total / currency / metadata / email are absent', async () => {
 		// Exercises every `??` and `?.` along the checkout success path.

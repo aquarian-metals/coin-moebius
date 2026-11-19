@@ -341,7 +341,7 @@ export function createBitcoinCreator(config: BitcoinCreatorConfig) {
  * `x-bitcoin-sig` header.
  */
 export function createBitcoinVerifier(config: BitcoinVerifierConfig): BitcoinVerifier {
-	if (!config.hmacSecret) {
+	if (!config.hmacSecret?.trim()) {
 		throw new Error('coin-moebius/bitcoin: hmacSecret missing on verifier config');
 	}
 
@@ -433,7 +433,7 @@ export function createBitcoinVerifier(config: BitcoinVerifierConfig): BitcoinVer
  *   process.on('SIGTERM', stop);
  */
 export function createBitcoinIndexer(config: BitcoinIndexerConfig): BitcoinIndexer {
-	if (!config.hmacSecret) {
+	if (!config.hmacSecret?.trim()) {
 		throw new Error('coin-moebius/bitcoin: hmacSecret missing on indexer config');
 	}
 

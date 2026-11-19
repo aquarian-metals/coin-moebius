@@ -94,6 +94,15 @@ describe('createCryptomusVerifier', () => {
 		expect(result!.paymentId).toBe('crypt-uuid-str');
 	});
 
+	it.each(['confirmed', 'confirm_check', 'wrong_amount_waiting', 'unknown'])(
+		'withholds success for %s',
+		async (status) => {
+			const verify = createCryptomusVerifier({ merchantUuid: MERCHANT, paymentApiKey: KEY });
+			const payload = { status, uuid: 'order', amount: '19.99', currency: 'USD' };
+			const event = await verify({ ...payload, sign: cryptomusSign(phpJson(payload), KEY) }, {});
+			expect(asPayment(event)?.status).toBe('pending');
+		},
+	);
 	it('marks unfinished statuses as pending', async () => {
 		const verify = createCryptomusVerifier({ merchantUuid: MERCHANT, paymentApiKey: KEY });
 		const payload = {
@@ -179,7 +188,7 @@ describe('createCryptomusCreator', () => {
 			url_callback: 'https://x.example/api/payment-webhook',
 			url_return: 'https://x.example/success',
 		});
-		expect(sentBody.order_id).toMatch(/^sku-1-\d+$/);
+		expect(sentBody.order_id).toMatch(/^[0-9a-f-]{36}$/);
 	});
 
 	it('throws when Cryptomus returns a non-2xx response', async () => {

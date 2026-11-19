@@ -69,7 +69,7 @@ export interface NowPaymentsIpnPayload {
 export function createNowPaymentsVerifier(config: NowPaymentsVerifierConfig): WebhookVerifier {
 	return {
 		async verify(rawBody, headers): Promise<WebhookEvent> {
-			if (!config.ipnSecret) {
+			if (!config.ipnSecret?.trim()) {
 				throw new Error('coin-moebius/nowpayments: ipnSecret missing on verifier config');
 			}
 

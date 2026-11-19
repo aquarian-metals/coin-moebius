@@ -82,7 +82,7 @@ export async function handleMockPay(req, res) {
 	const body = await readJson(req);
 	const paymentId = String(body.paymentId ?? '');
 	const record = await getStore().get(paymentId);
-	if (!record) {
+	if (record?.provider !== 'monero') {
 		res.statusCode = 404;
 		res.setHeader('Content-Type', 'application/json');
 		res.end(JSON.stringify({ error: 'unknown paymentId' }));

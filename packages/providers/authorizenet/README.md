@@ -72,7 +72,7 @@ The Signature Key is **not** the Transaction Key. Generate it in the Merchant In
 | `net.authorize.payment.refund.created`           | `refunded`                                           |
 | `net.authorize.payment.void.created`             | `failed`                                             |
 | `net.authorize.payment.fraud.held`               | `pending`                                            |
-| `net.authorize.payment.fraud.approved`           | `success`                                            |
+| `net.authorize.payment.fraud.approved`           | `pending`                                            |
 | `net.authorize.payment.fraud.declined`           | `failed`                                             |
 | anything else                                    | (verifier returns `null`, signature still validated) |
 
@@ -84,7 +84,7 @@ Authorize.Net's sandbox is at `apitest.authorize.net` (REST) and `test.authorize
 
 ### Currency posture
 
-Authorize.Net is primarily a US gateway; non-USD support is limited and depends on your processor agreement. The verifier returns `'USD'` on `PaymentResult.currency` because Authorize.Net's webhook payloads do not carry a currency field — merchants on a non-USD account should override via metadata or by reading `raw`.
+Set the verifier’s `currency` to your merchant account currency. The webhook omits this field. The default is USD.
 
 ## License
 

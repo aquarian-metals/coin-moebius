@@ -139,10 +139,10 @@ const create = createZanoCreator({
 });
 
 export default async (req) => {
-  const { productId, metadata } = await req.json();
+  const { productId } = await req.json();
   const price = await priceOf(productId); // from your own product list, e.g. { amount: 19.99, currency: 'USD', assetId: FREEDOM_DOLLAR_ASSET_ID }
   if (!price) return new Response('Unknown product', { status: 404 });
-  return Response.json(await create({ productId, ...price, metadata }));
+  return Response.json(await create({ productId, ...price }));
 };
 ```
 
@@ -167,14 +167,20 @@ verifiers.register('zano', createZanoVerifier({ hmacSecret: process.env.ZANO_HMA
 
 export default async (req) => {
   const result = await verifiers.verify(await req.text(), Object.fromEntries(req.headers));
-  if (!result) return new Response('', { status: 200 });
-  await myStore.upsert({ ...result, createdAt: result.timestamp, updatedAt: Date.now() });
-  if (result.status === 'success') await fulfill(result);
+  if (result?.kind !== 'payment') return new Response('', { status: 200 });
+  const order = await myStore.get(result.paymentId);
+  if (!order || order.provider !== result.provider || order.currency !== result.currency)
+    return new Response('Order mismatch', { status: 409 });
+  if (result.status === 'success' && result.amount !== order.metadata.invoiceAmount)
+    return new Response('Amount mismatch', { status: 409 });
+  // Implement this in your database: lock the order, apply the status only if
+  // current, and grant the saved product once in the same transaction.
+  await applyVerifiedPaymentOnce(order.paymentId, result);
   return new Response('', { status: 200 });
 };
 ```
 
-Make `fulfill` safe to run twice for the same order. The indexer can resend a message after a restart, and every payment system in the world does the same.
+Make `applyVerifiedPaymentOnce` safe to run twice for the same order. The indexer can resend a message after a restart, and every payment system in the world does the same.
 
 You also need the small read-only piece every Coin Moebius provider uses, `/api/payment-status`, which looks an order up so the buyer's page can ask "paid yet?". The example folder has it.
 

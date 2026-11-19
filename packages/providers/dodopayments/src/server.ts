@@ -205,7 +205,7 @@ export function createDodoPaymentsVerifier(config: DodoPaymentsVerifierConfig) {
 		rawBody: unknown,
 		headers?: unknown,
 	): Promise<WebhookEvent | null> {
-		if (!config.webhookSecret) {
+		if (!config.webhookSecret?.trim()) {
 			throw new Error('coin-moebius/dodopayments: webhookSecret missing on verifier config');
 		}
 

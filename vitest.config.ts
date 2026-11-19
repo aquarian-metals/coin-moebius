@@ -2,7 +2,7 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
 	test: {
-		include: ['packages/**/test/**/*.test.ts'],
+		include: ['packages/**/test/**/*.test.ts', 'examples/**/test/**/*.test.js'],
 		exclude: ['**/node_modules/**', '**/dist/**'],
 		// Default to Node environment. DOM-touching tests (manual provider's
 		// modal, future Stripe client tests) opt in via a per-file pragma:

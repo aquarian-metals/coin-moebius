@@ -1,6 +1,6 @@
-import { isStatusRegression } from '@aquarian-metals/coin-moebius-core';
 import { createVerifierRegistry } from '@aquarian-metals/coin-moebius-server';
 import { createBitcoinCashVerifier } from '@aquarian-metals/coin-moebius-bitcoin-cash/server';
+import { recordIndexerPayment } from '../record-indexer-payment.js';
 import { myStore } from './_store.js';
 
 const verifiers = createVerifierRegistry();
@@ -19,28 +19,7 @@ export default async (req) => {
 		const result = await verifiers.verify(rawBody, headers);
 		if (!result) return new Response('', { status: 200 });
 
-		const existing = await myStore.get(result.paymentId);
-		if (existing && existing.status === result.status) {
-			return new Response('', { status: 200 });
-		}
-		if (existing && isStatusRegression(existing.status, result.status)) {
-			return new Response('', { status: 200 });
-		}
-
-		const order = {
-			...existing,
-			...result,
-			metadata: { ...existing?.metadata, ...result.metadata },
-			createdAt: existing?.createdAt ?? result.timestamp,
-			updatedAt: Date.now(),
-		};
-		await myStore.upsert(order);
-
-		if (result.status === 'success') {
-			await onPaymentSucceeded(order);
-		}
-
-		return new Response('', { status: 200 });
+		return await recordIndexerPayment(myStore, result, onPaymentSucceeded);
 	} catch (err) {
 		console.error('[payment-webhook] error:', err);
 		return new Response('', { status: 400 });

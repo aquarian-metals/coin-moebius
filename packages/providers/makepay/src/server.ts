@@ -73,7 +73,7 @@ export function createMakepayVerifier(
 		rawBody: unknown,
 		headers?: unknown,
 	): Promise<WebhookEvent | null> {
-		if (!config.webhookSecret) {
+		if (!config.webhookSecret?.trim()) {
 			throw new Error('coin-moebius/makepay: webhookSecret missing on verifier config');
 		}
 
@@ -337,7 +337,6 @@ export function mapMakepaySessionStatus(
 	sessionStatus: string | undefined,
 	eventType?: string,
 ): PaymentResult['status'] {
-	if (sessionStatus?.toLowerCase() === 'complete') return 'success';
 	switch (eventType) {
 		case 'payment_request_expired':
 		case 'quote_expired':
@@ -345,6 +344,8 @@ export function mapMakepaySessionStatus(
 			return 'failed';
 	}
 	switch (sessionStatus?.toLowerCase()) {
+		case 'complete':
+			return 'success';
 		case 'expired':
 		case 'cancelled':
 		case 'canceled':

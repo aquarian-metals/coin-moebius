@@ -97,7 +97,7 @@ const referenceCode = generateReferenceCode();
 const state = {
   status: 'pending_manual' as const,
   referenceCode,
-  createdAt: new Date().toISOString(),
+  createdAt: Date.now(),
   expectedAmount: 30,
   expectedCurrency: 'Goldback',
 };
@@ -105,11 +105,9 @@ const state = {
 // Happy path: buyer mails payment, seller confirms receipt.
 const received = markReceived(state, 30);
 console.log(received.state.status); // "succeeded"
-console.log(received.result.amountMatch); // true
+console.log(received.result.metadata.amountMatch); // true
 
-// Mismatched amount: buyer sent less than expected.
-const partial = markReceived(state, 25);
-console.log(partial.result.amountMatch); // false
+// Keep an underpaid order open until the seller receives the full amount.
 
 // Seller cancels before payment arrives.
 const canceled = cancelPending(state);

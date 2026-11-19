@@ -27,6 +27,7 @@ export interface CryptomusVerifierConfig {
 }
 
 export function createCryptomusVerifier(config: CryptomusVerifierConfig) {
+	if (!config.paymentApiKey?.trim()) throw new Error('Missing cryptomus paymentApiKey');
 	// Replay note: unlike the Monero verifier, we can't enforce a freshness
 	// window here — Cryptomus's webhook payload carries no timestamp/nonce to
 	// bind, and we don't control their sender. Replay is instead neutralized at
@@ -81,13 +82,10 @@ export function createCryptomusVerifier(config: CryptomusVerifierConfig) {
 
 		return {
 			kind: 'payment',
-			status:
-				status === 'paid' || status === 'paid_over' || status === 'confirmed'
-					? 'success'
-					: 'pending',
+			status: status === 'paid' || status === 'paid_over' ? 'success' : 'pending',
 			paymentId: (raw.uuid ?? raw.order_id) as string,
 			provider: 'cryptomus',
-			amount: parseFloat(String(raw.amount)),
+			amount: Number(raw.amount),
 			currency: raw.currency as string,
 			metadata: {
 				address: raw.address,
@@ -148,7 +146,7 @@ export function createCryptomusCreator(config: CryptomusCreatorConfig) {
 		const body = {
 			amount: input.amount.toString(),
 			currency: input.currency,
-			order_id: `${input.productId}-${Date.now()}`,
+			order_id: crypto.randomUUID(),
 			url_callback: config.callbackUrl,
 			url_return: config.returnUrl,
 		};

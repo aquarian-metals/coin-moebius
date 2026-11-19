@@ -141,6 +141,7 @@ describe('mapMakepaySessionStatus', () => {
 	it('maps documented terminal non-payment event types to failed', () => {
 		for (const e of ['payment_request_expired', 'quote_expired', 'payment_cancelled_by_payer']) {
 			expect(mapMakepaySessionStatus('pending', e)).toBe('failed');
+			expect(mapMakepaySessionStatus('complete', e)).toBe('failed');
 		}
 	});
 

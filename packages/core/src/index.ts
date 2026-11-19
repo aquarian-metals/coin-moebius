@@ -248,6 +248,11 @@ export function createPaymentManager(config: PaymentManagerConfig) {
 					const res = await fetch(url, { signal: controller.signal });
 					if (res.ok) {
 						const record = (await res.json()) as PaymentResult;
+						if (stopped) return;
+						if (record.paymentId !== paymentId) {
+							schedule(nextDelay());
+							return;
+						}
 						if (record.status === 'success') {
 							stop();
 							onSuccess?.(record);

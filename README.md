@@ -122,7 +122,7 @@ const payments = createPaymentManager({
 // The single source of truth for fulfillment
 payments.onSuccess((result) => {
   console.log(`PAID with ${result.provider}!`, result);
-  // Unlock the download, fire the confetti, update the DB.
+  // Refresh the order UI. The download endpoint checks the buyer and paid order on the server.
 });
 ```
 
@@ -136,7 +136,7 @@ document.getElementById('buy-stripe').onclick = () => {
 
 // For Crypto
 document.getElementById('buy-crypto').onclick = () => {
-  payments.initiate({ productId: 'ebook-42', amount: 0.12, currency: 'XMR', providerId: 'cryptomus' });
+  payments.initiate({ productId: 'ebook-42', amount: 19.99, currency: 'USD', providerId: 'cryptomus' });
 };
 ```
 
@@ -164,11 +164,14 @@ verifiers.register(
 verifiers.register('nowpayments', createNowPaymentsVerifier({ ipnSecret: process.env.NOWPAYMENTS_IPN_SECRET }));
 
 export default async function handler(req) {
-  // Boom. Verified, standardized payload.
-  const result = await verifiers.verify(req.body, req.headers);
+  // Mount this handler at /webhook/:provider and use the provider from that route.
+  const provider = new URL(req.rawUrl).pathname.split('/').pop();
+  const result = await verifiers.verify(req.body, req.headers, provider);
 
-  if (result.status === 'success') {
-    // Fulfill the order
+  if (result?.kind === 'payment' && result.status === 'success') {
+    // Your database transaction matches the saved checkout, provider, amount, and currency.
+    // Grant the purchased item to its recorded buyer once.
+    await fulfillMatchingOrderOnce(result);
   }
   return { statusCode: 200 };
 }
@@ -181,18 +184,19 @@ import { createCryptomusCreator } from '@aquarian-metals/coin-moebius-cryptomus/
 const create = createCryptomusCreator({
   merchantUuid: process.env.CRYPTOMUS_MERCHANT_UUID,
   paymentApiKey: process.env.CRYPTOMUS_PAYMENT_API_KEY,
-  callbackUrl: `${process.env.URL}/.netlify/functions/payment-webhook`,
+  callbackUrl: `${process.env.URL}/.netlify/functions/payment-webhook/cryptomus`,
   returnUrl: `${process.env.URL}/success`,
 });
 
 export default async function handler(req) {
-  const { productId, amount, metadata } = JSON.parse(req.body);
-  const result = await create({ productId, amount, metadata });
+  const { productId } = JSON.parse(req.body);
+  if (productId !== 'ebook-42') return { statusCode: 404, body: 'Unknown product' };
+  const result = await create({ productId, amount: 19.99, currency: 'USD' });
   return { statusCode: 200, body: JSON.stringify(result) };
 }
 ```
 
-Stripe has its own equivalent (`create-stripe-session`) that you'd write against the official Stripe SDK — see `examples/static-site-demo/netlify/functions/create-stripe-session.js`.
+Stripe has its own equivalent (`create-stripe-session`) that you'd write against the official Stripe SDK — see `examples/static-site-demo/dev-api/checkout-stripe.js`.
 
 ---
 

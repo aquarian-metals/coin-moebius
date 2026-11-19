@@ -44,6 +44,7 @@ export interface StripeVerifierConfig {
 const DEFAULT_API_VERSION = '2026-04-22.dahlia';
 
 export function createStripeVerifier(config: StripeVerifierConfig) {
+	if (!config.endpointSecret?.trim()) throw new Error('Missing stripe endpointSecret');
 	// Webhooks.constructEvent only uses the endpointSecret — the API key on the
 	// instance is never consulted for that call. We accept a placeholder when no
 	// real key is supplied so callers using this purely for verification don't
@@ -104,16 +105,25 @@ export function createStripeVerifier(config: StripeVerifierConfig) {
 		// Any other signed event resolves to `null` so consumers can skip
 		// non-payment events without polluting their transaction store.
 
-		if (event.type === 'checkout.session.completed') {
+		if (
+			event.type === 'checkout.session.completed' ||
+			event.type === 'checkout.session.async_payment_succeeded' ||
+			event.type === 'checkout.session.async_payment_failed'
+		) {
 			const session = event.data.object;
 			// Subscription-mode checkouts arrive here too, but the first-payment
 			// signal is canonicalized through `customer.subscription.created`
 			// and `invoice.payment_succeeded`. Skip subscription-mode sessions
 			// to avoid double-counting and let the subscription handlers below
 			// emit the normalized signup event.
-			if (session.mode === 'subscription') return null;
-			const status: PaymentResult['status'] =
-				session.payment_status === 'paid' || session.status === 'complete' ? 'success' : 'pending';
+			if (session.mode === 'subscription' || session.mode === 'setup') return null;
+			let status: PaymentResult['status'] = 'pending';
+			const freeOrder =
+				session.mode === 'payment' &&
+				session.amount_total === 0 &&
+				session.payment_status === 'no_payment_required';
+			if (event.type === 'checkout.session.async_payment_failed') status = 'failed';
+			else if (session.payment_status === 'paid' || freeOrder) status = 'success';
 			const paymentIntentId = readStringField(session, 'payment_intent');
 			return {
 				kind: 'payment',

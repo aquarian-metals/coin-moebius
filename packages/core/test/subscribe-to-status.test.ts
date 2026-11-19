@@ -86,6 +86,21 @@ describe('manager.subscribeToStatus', () => {
 		expect(fetchMock.mock.calls.length).toBe(callsAtSuccess);
 	});
 
+	it('keeps polling when the endpoint returns another payment', async () => {
+		vi.spyOn(globalThis, 'fetch')
+			.mockResolvedValueOnce(Response.json({ ...successResult(), paymentId: 'other' }))
+			.mockResolvedValueOnce(Response.json(successResult()));
+		const onSuccess = vi.fn();
+		buildManager().subscribeToStatus(
+			'p1',
+			{ statusEndpoint: '/api/status', onSuccess },
+			{ pollIntervalMs: 1000 },
+		);
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(onSuccess).not.toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(onSuccess).toHaveBeenCalledOnce();
+	});
 	it('calls onTimeout once timeoutMs elapses', async () => {
 		vi.spyOn(globalThis, 'fetch').mockResolvedValue(
 			new Response(JSON.stringify(pendingResult()), { status: 200 }),

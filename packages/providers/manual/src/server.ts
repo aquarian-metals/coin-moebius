@@ -96,6 +96,14 @@ export function markReceived(
 		);
 	}
 
+	if (
+		!Number.isFinite(state.expectedAmount) ||
+		state.expectedAmount <= 0 ||
+		!Number.isFinite(receivedAmount) ||
+		receivedAmount < state.expectedAmount
+	) {
+		throw new Error('Full expected payment must be received before confirmation');
+	}
 	const now = Date.now();
 	const nextState: ManualTransactionState = {
 		...state,

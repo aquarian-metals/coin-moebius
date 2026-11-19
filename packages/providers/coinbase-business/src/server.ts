@@ -80,7 +80,7 @@ export function createCoinbaseBusinessVerifier(
 
 	return {
 		async verify(rawBody, headers): Promise<WebhookEvent | null> {
-			if (!config.webhookSecret) {
+			if (!config.webhookSecret?.trim()) {
 				throw new Error('coin-moebius/coinbase-business: webhookSecret missing on verifier config');
 			}
 

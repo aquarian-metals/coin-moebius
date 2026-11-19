@@ -7,6 +7,7 @@
  * required `paymentId` query param is missing.
  */
 
+import { toPublicPaymentResult } from '@aquarian-metals/coin-moebius-core';
 import { getStore } from './_shared.js';
 
 export async function handlePaymentStatus(req, res) {
@@ -30,5 +31,5 @@ export async function handlePaymentStatus(req, res) {
 
 	res.statusCode = 200;
 	res.setHeader('Content-Type', 'application/json');
-	res.end(JSON.stringify(record));
+	res.end(JSON.stringify(toPublicPaymentResult(record)));
 }

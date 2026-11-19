@@ -146,7 +146,7 @@ npm run dev
 stripe listen --forward-to localhost:5173/api/payment-webhook/stripe
 ```
 
-The Stripe redirect lands the buyer on `http://localhost:5173/?status=success` after they pay; override with `STRIPE_SUCCESS_URL` / `STRIPE_CANCEL_URL` if you mount the demo elsewhere.
+The return page polls the server using the Checkout Session ID. If you override `STRIPE_SUCCESS_URL`, include `?session_id={CHECKOUT_SESSION_ID}` so the demo can find the order.
 
 ## Run the Cryptomus flow
 
@@ -188,3 +188,5 @@ Cryptomus posts the webhook to a public URL, so you'll need ngrok / cloudflared 
 ## Important
 
 Never import `@aquarian-metals/coin-moebius-*/server` from browser code (`main.ts`). The `dev-api/` handlers are the only place server entries are loaded.
+
+Each self-hosted indexer needs its own webhook signing secret. Explicit mock or regtest mode generates a private, process-local key when none is configured. Restart the demo when changing credentials. Keep simulation endpoints on your local development machine.

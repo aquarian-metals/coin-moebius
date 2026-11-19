@@ -30,11 +30,11 @@ const payments = createPaymentManager({
   ],
 });
 
-// Pick a coin via the `currency` field — Cryptomus routes whichever you ask for.
+// Display the price from your catalog. The checkout endpoint looks it up again.
 payments.initiate({
-  productId: 'ebook-42',
-  amount: 0.12,
-  currency: 'XMR', // or 'BTC', 'USDT', etc.
+  productId: 'jamstack-guide',
+  amount: 19.99,
+  currency: 'USD',
   providerId: 'cryptomus',
 });
 ```
@@ -55,9 +55,9 @@ const create = createCryptomusCreator({
 });
 
 export default async function handler(req) {
-  const { productId, amount, currency, metadata } = JSON.parse(req.body);
-  // `currency` is required — pick a Cryptomus-supported ticker.
-  const result = await create({ productId, amount, currency, metadata });
+  const { productId } = JSON.parse(req.body);
+  if (productId !== 'jamstack-guide') return { statusCode: 404, body: 'Unknown product' };
+  const result = await create({ productId, amount: 19.99, currency: 'USD' });
   // result: { uuid, address, qr?, amount?, raw }
   return { statusCode: 200, body: JSON.stringify(result) };
 }

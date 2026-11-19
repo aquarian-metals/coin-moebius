@@ -56,11 +56,18 @@ describe('markReceived', () => {
 		expect(result.metadata.amountMatch).toBe(true);
 	});
 
+	it.each([25, 0, -1, NaN, Infinity])(
+		'keeps the order open for an insufficient or invalid receipt (%s)',
+		(received) => {
+			expect(() => markReceived(baseState, received)).toThrow(/Full expected/);
+			expect(baseState.status).toBe('pending_manual');
+		},
+	);
 	it('marks amountMatch=false when received differs from expected', () => {
-		const { result } = markReceived(baseState, 25);
+		const { result } = markReceived(baseState, 35);
 		expect(result.metadata.amountMatch).toBe(false);
 		// The result reports the actual received amount, not the expected.
-		expect(result.amount).toBe(25);
+		expect(result.amount).toBe(35);
 	});
 
 	it('throws when the transaction is not in pending_manual', () => {

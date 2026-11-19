@@ -22,26 +22,40 @@ const payments = createPaymentManager({
 
 const statusEl = document.getElementById('status');
 
-payments.onSuccess((result) => {
+function showConfirmed(result: { provider: string; paymentId: string }) {
 	if (!statusEl) return;
 	statusEl.style.display = 'block';
-	statusEl.innerHTML = `
-		<strong>Payment confirmed.</strong><br />
-		Provider: ${result.provider}<br />
-		Payment ID: ${result.paymentId}<br />
-		<button type="button" id="download-btn">Download your guide</button>
-	`;
-	document.getElementById('download-btn')?.addEventListener('click', () => {
-		alert('Replace with your fulfillment / signed URL.');
-	});
-});
+	const title = document.createElement('strong');
+	title.textContent = 'Payment confirmed.';
+	const download = document.createElement('button');
+	download.type = 'button';
+	download.textContent = 'Download your guide';
+	download.onclick = () => alert('Replace with your fulfillment / signed URL.');
+	statusEl.replaceChildren(
+		title,
+		document.createElement('br'),
+		`Provider: ${result.provider}`,
+		document.createElement('br'),
+		`Payment ID: ${result.paymentId}`,
+		document.createElement('br'),
+		download,
+	);
+}
+payments.onSuccess(showConfirmed);
+
+const sessionId = new URLSearchParams(window.location.search).get('session_id');
+if (sessionId && statusEl) {
+	statusEl.style.display = 'block';
+	statusEl.textContent = 'Awaiting payment confirmation…';
+	startStatusPolling(sessionId);
+}
 
 payments.onPending((result) => {
 	if (!statusEl) return;
 	statusEl.style.display = 'block';
 	statusEl.innerHTML = renderPendingHtml(result);
 	if (result.paymentId) {
-		startStatusPolling(result.paymentId);
+		if (result.provider !== 'stripe') startStatusPolling(result.paymentId);
 		if (result.provider === 'monero') {
 			document.getElementById('mock-pay-btn')?.addEventListener('click', () => {
 				void simulateMockPayment(result.paymentId, '/api/mock/pay-monero');
@@ -147,8 +161,13 @@ function startStatusPolling(paymentId: string) {
 		{
 			statusEndpoint: '/api/payment-status',
 			onPending: (r) => console.log('pending poll:', r.metadata.confirmations ?? 0),
-			onSuccess: (r) => console.log('success poll:', r),
-			onTimeout: () => console.log('timeout — ask buyer to check email'),
+			onSuccess: showConfirmed,
+			onFailed: () => {
+				if (statusEl) statusEl.textContent = 'Payment did not complete.';
+			},
+			onTimeout: () => {
+				if (statusEl) statusEl.textContent = 'Payment confirmation is still outstanding.';
+			},
 		},
 		{ pollIntervalMs: 1500, timeoutMs: 30 * 60 * 1000 },
 	);

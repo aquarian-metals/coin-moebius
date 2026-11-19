@@ -95,13 +95,13 @@ const create = createZanoCreator({
 });
 
 export default async (req) => {
-  const { productId, metadata } = await req.json();
+  const { productId } = await req.json();
   // Price and asset from your own catalog, never from the request: the
   // browser is the buyer's, and a buyer can send any amount they like, in
   // any asset they like.
   const price = await priceOf(productId);
   if (!price) return new Response('Unknown product', { status: 404 });
-  return Response.json(await create({ productId, ...price, metadata }));
+  return Response.json(await create({ productId, ...price }));
 };
 ```
 

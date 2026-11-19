@@ -9,6 +9,7 @@
  */
 import { createVerifierRegistry } from '@aquarian-metals/coin-moebius-server';
 import { createMoneroVerifier } from '@aquarian-metals/coin-moebius-monero/server';
+import { recordIndexerPayment } from '../record-indexer-payment.js';
 import { myStore } from './_store.js';
 
 const verifiers = createVerifierRegistry();
@@ -27,25 +28,7 @@ export default async (req) => {
 		const result = await verifiers.verify(rawBody, headers);
 		if (!result) return new Response('', { status: 200 });
 
-		const existing = await myStore.get(result.paymentId);
-		if (existing && existing.status === result.status) {
-			// Duplicate webhook — idempotent no-op.
-			return new Response('', { status: 200 });
-		}
-
-		await myStore.upsert({
-			...result,
-			createdAt: existing?.createdAt ?? result.timestamp,
-			updatedAt: Date.now(),
-		});
-
-		if (result.status === 'success') {
-			// Fulfill the order. This is your fulfilment logic — unlock
-			// the digital download, email the buyer, etc.
-			await onPaymentSucceeded(result);
-		}
-
-		return new Response('', { status: 200 });
+		return await recordIndexerPayment(myStore, result, onPaymentSucceeded);
 	} catch (err) {
 		console.error('[payment-webhook] error:', err);
 		return new Response('', { status: 400 });

@@ -68,7 +68,7 @@ export interface WebhookVerifier {
 export function createSquareVerifier(config: SquareVerifierConfig): WebhookVerifier {
 	return {
 		async verify(rawBody, headers): Promise<WebhookEvent | null> {
-			if (!config.signatureKey) {
+			if (!config.signatureKey?.trim()) {
 				throw new Error('coin-moebius/square: signatureKey missing on verifier config');
 			}
 			if (!config.notificationUrl) {

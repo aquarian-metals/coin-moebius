@@ -16,7 +16,7 @@ export default function createMyProvider(config: MyProviderConfig): PaymentProvi
 		icon: 'https://.../icon.svg',
 
 		async initiate(
-			options: InitiateOptions & { providerId?: string },
+			_options: InitiateOptions & { providerId?: string },
 			callbacks: {
 				onSuccess: (result: PaymentResult) => void;
 				onPending?: (result: PaymentResult) => void;
@@ -28,18 +28,7 @@ export default function createMyProvider(config: MyProviderConfig): PaymentProvi
 					await ensureScriptLoaded('https://js.stripe.com/v3/', 'Stripe');
 				}
 
-				const result: PaymentResult = {
-					status: 'success',
-					paymentId: 'generated-id-here',
-					provider: provider.id,
-					amount: options.amount,
-					currency: options.currency,
-					metadata: options.metadata ?? {},
-					timestamp: Date.now(),
-					raw: {},
-				};
-
-				callbacks.onSuccess(result);
+				throw new Error('Implement server-side checkout before enabling this provider');
 			} catch (err) {
 				callbacks.onError(err instanceof Error ? err : new Error(String(err)));
 			}
