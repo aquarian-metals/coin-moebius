@@ -29,6 +29,7 @@ describe('createStripeVerifier', () => {
 				object: {
 					id: 'cs_test_1',
 					object: 'checkout.session',
+					mode: 'payment',
 					payment_status: 'paid',
 					status: 'complete',
 					amount_total: 1999,
@@ -64,7 +65,10 @@ describe('createStripeVerifier', () => {
 			data: {
 				object: {
 					id: 'cs_no_pi',
+					amount_total: 1999,
+					currency: 'usd',
 					object: 'checkout.session',
+					mode: 'payment',
 					payment_status: 'paid',
 					status: 'complete',
 				},
@@ -425,6 +429,7 @@ describe('createStripeVerifier', () => {
 				object: {
 					id: 'cs_paid_open',
 					object: 'checkout.session',
+					mode: 'payment',
 					payment_status: 'paid',
 					status: 'open',
 					amount_total: 1000,
@@ -445,6 +450,8 @@ describe('createStripeVerifier', () => {
 		['checkout.session.completed', 'no_payment_required', 'payment', 0, 'success'],
 		['checkout.session.completed', 'no_payment_required', 'payment', 1999, 'pending'],
 		['checkout.session.completed', 'no_payment_required', 'setup', 0, undefined],
+		['checkout.session.completed', 'paid', 'unrecognized', 1999, undefined],
+		['checkout.session.completed', 'paid', undefined, 1999, undefined],
 		['checkout.session.async_payment_succeeded', 'paid', 'subscription', 1999, undefined],
 	])(
 		'maps %s with %s in %s mode (%s) to %s',
@@ -453,36 +460,32 @@ describe('createStripeVerifier', () => {
 			const { body, headers } = signedRequest({
 				type,
 				data: {
-					object: { id: 'cs_delayed', status: 'complete', mode, payment_status, amount_total },
+					object: {
+						id: 'cs_delayed',
+						currency: 'usd',
+						status: 'complete',
+						mode,
+						payment_status,
+						amount_total,
+					},
 				},
 			});
 			expect(asPayment(await verify(body, headers))?.status).toBe(expected);
 		},
 	);
 
-	it('falls back to defaults when amount_total / currency / metadata / email are absent', async () => {
-		// Exercises every `??` and `?.` along the checkout success path.
+	it.each([
+		{ amount_total: 1999 },
+		{ currency: 'usd' },
+		{ amount_total: -1, currency: 'usd' },
+		{ amount_total: 0.5, currency: 'usd' },
+	])('rejects incomplete or invalid Checkout settlement evidence %o', async (fields) => {
 		const verify = createStripeVerifier({ endpointSecret: ENDPOINT_SECRET });
-		const event = {
-			id: 'evt_sparse',
-			object: 'event',
+		const { body, headers } = signedRequest({
 			type: 'checkout.session.completed',
-			data: {
-				object: {
-					id: 'cs_sparse',
-					object: 'checkout.session',
-					payment_status: 'paid',
-					status: 'complete',
-				},
-			},
-		};
-		const { body, headers } = signedRequest(event);
-		const result = asPayment(await verify(body, headers));
-		expect(result).not.toBeNull();
-		expect(result!.status).toBe('success');
-		expect(result!.amount).toBe(0);
-		expect(result!.currency).toBe('USD');
-		expect(result!.metadata).toMatchObject({ email: undefined });
+			data: { object: { id: 'cs_fixture', mode: 'payment', payment_status: 'paid', ...fields } },
+		});
+		await expect(verify(body, headers)).rejects.toThrow(/payment (amount|currency)/);
 	});
 
 	it('uses customer_details.email when set, ignoring customer_email', async () => {
@@ -496,7 +499,10 @@ describe('createStripeVerifier', () => {
 			data: {
 				object: {
 					id: 'cs_cd_email',
+					amount_total: 1999,
+					currency: 'usd',
 					object: 'checkout.session',
+					mode: 'payment',
 					payment_status: 'paid',
 					status: 'complete',
 					customer_details: { email: 'fromdetails@example.com' },

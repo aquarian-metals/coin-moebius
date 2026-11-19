@@ -44,3 +44,25 @@ export function minorToMajorUnits(minor: number, currency: string): number {
 export function majorToMinorUnits(amount: number, currency: string): number {
 	return Math.round(amount * 10 ** minorUnitExponent(currency));
 }
+
+/** Require explicit settlement evidence before a gateway adapter emits a successful payment. */
+export function assertPaymentEvidence(
+	paymentId: unknown,
+	amount: unknown,
+	currency: unknown,
+	minorUnits = false,
+): void {
+	if (typeof paymentId !== 'string' || !paymentId.trim())
+		throw new Error('Missing payment identifier');
+	if (typeof currency !== 'string' || !currency.trim() || currency.trim() !== currency)
+		throw new Error('Missing or invalid payment currency');
+	const decimal = typeof amount === 'string' && /^\d+(?:\.\d+)?$/.test(amount);
+	if (typeof amount !== 'number' && !decimal) throw new Error('Missing or invalid payment amount');
+	const value = Number(amount);
+	if (
+		!Number.isFinite(value) ||
+		value < 0 ||
+		(minorUnits && (typeof amount !== 'number' || !Number.isSafeInteger(value)))
+	)
+		throw new Error('Invalid payment amount');
+}

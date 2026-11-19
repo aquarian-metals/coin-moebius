@@ -174,3 +174,32 @@ describe('manager.subscribeToStatus', () => {
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 });
+
+it('expires while the status request is still outstanding', async () => {
+	vi.useFakeTimers();
+	try {
+		let finish!: (response: Response) => void;
+		const fetcher = vi.spyOn(globalThis, 'fetch').mockImplementation(
+			() =>
+				new Promise((resolve) => {
+					finish = resolve;
+				}),
+		);
+		const onTimeout = vi.fn();
+		const onSuccess = vi.fn();
+		createPaymentManager({ providers: [] }).subscribeToStatus(
+			'p1',
+			{ statusEndpoint: '/status', onTimeout, onSuccess },
+			{ pollIntervalMs: 10, timeoutMs: 100 },
+		);
+		await vi.advanceTimersByTimeAsync(100);
+		expect(onTimeout).toHaveBeenCalledOnce();
+		expect(fetcher.mock.calls[0][1]?.signal?.aborted).toBe(true);
+		finish(Response.json(successResult()));
+		await vi.advanceTimersByTimeAsync(100);
+		expect(onSuccess).not.toHaveBeenCalled();
+	} finally {
+		vi.useRealTimers();
+		vi.restoreAllMocks();
+	}
+});

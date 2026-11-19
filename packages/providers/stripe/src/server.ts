@@ -1,3 +1,4 @@
+import { assertPaymentEvidence } from '@aquarian-metals/coin-moebius-core';
 import {
 	minorToMajorUnits,
 	type PaymentResult,
@@ -116,15 +117,15 @@ export function createStripeVerifier(config: StripeVerifierConfig) {
 			// and `invoice.payment_succeeded`. Skip subscription-mode sessions
 			// to avoid double-counting and let the subscription handlers below
 			// emit the normalized signup event.
-			if (session.mode === 'subscription' || session.mode === 'setup') return null;
+			if (session.mode !== 'payment') return null;
 			let status: PaymentResult['status'] = 'pending';
 			const freeOrder =
-				session.mode === 'payment' &&
-				session.amount_total === 0 &&
-				session.payment_status === 'no_payment_required';
+				session.amount_total === 0 && session.payment_status === 'no_payment_required';
 			if (event.type === 'checkout.session.async_payment_failed') status = 'failed';
 			else if (session.payment_status === 'paid' || freeOrder) status = 'success';
 			const paymentIntentId = readStringField(session, 'payment_intent');
+			if (status === 'success')
+				assertPaymentEvidence(session.id, session.amount_total, session.currency, true);
 			return {
 				kind: 'payment',
 				status,
@@ -393,6 +394,7 @@ function toPaymentFromInvoice(
 	event: Stripe.Event & { type: 'invoice.payment_succeeded' },
 ): WebhookEvent {
 	const invoice = event.data.object;
+	assertPaymentEvidence(invoice.id, invoice.amount_paid, invoice.currency, true);
 	const line = invoice.lines?.data?.[0] as unknown as Record<string, unknown> | undefined;
 	return {
 		kind: 'payment',

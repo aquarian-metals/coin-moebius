@@ -73,6 +73,10 @@ describe('createAuthorizenetVerifier', () => {
 		return createAuthorizenetVerifier({ signatureKey: SIGNATURE_KEY });
 	}
 
+	it('rejects a capture amount with a nonnumeric suffix', async () => {
+		const body = sampleBody({ amount: '9.99 USD' });
+		await expect(makeVerifier().verify(body, await signedHeaders(body))).rejects.toThrow(/amount/);
+	});
 	it('maps authcapture to success and surfaces the amount + id', async () => {
 		const verifier = makeVerifier();
 		const body = sampleBody({ eventType: 'net.authorize.payment.authcapture.created' });

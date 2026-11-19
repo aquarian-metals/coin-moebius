@@ -111,7 +111,7 @@ export async function handlePaymentWebhook(req, res) {
 		await getStore().upsert({
 			...existing,
 			status: result.status,
-			amount: result.amount,
+			amount: result.status === 'pending' ? expectedAmount : result.amount,
 			timestamp: result.timestamp,
 			metadata: {
 				...existing.metadata,

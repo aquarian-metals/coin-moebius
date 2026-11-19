@@ -122,6 +122,7 @@ describe('createNowPaymentsVerifier', () => {
 		const result = asPayment(await verifier.verify(payload, { 'x-nowpayments-sig': sig }));
 		expect(result!.status).toBe('partial');
 		expect(result!.amount).toBe(25.5);
+		expect(result!.currency).toBe('BTC');
 		expect(result!.metadata).toMatchObject({ actuallyPaid: 25.5, invoicedAmount: 30 });
 	});
 
@@ -178,3 +179,22 @@ describe('createNowPaymentsVerifier', () => {
 		expect(fromObject!.paymentId).toBe(fromString!.paymentId);
 	});
 });
+
+it.each([
+	[0.00019, 'partial', 'BTC'],
+	[0.0002, 'success', 'USD'],
+	[0.00021, 'success', 'USD'],
+] as const)(
+	'compares a finished payment of %s with the quoted coin amount',
+	async (received, status, currency) => {
+		const payload = samplePayload({ actually_paid: received });
+		const verifier = createNowPaymentsVerifier({ ipnSecret: IPN_SECRET });
+		const sig = await computeNowPaymentsSignature(payload, IPN_SECRET);
+		const result = asPayment(await verifier.verify(payload, { 'x-nowpayments-sig': sig }));
+		expect(result).toMatchObject({
+			status,
+			currency,
+			amount: status === 'partial' ? received : 9.99,
+		});
+	},
+);

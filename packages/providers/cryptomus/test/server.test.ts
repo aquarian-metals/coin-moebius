@@ -21,6 +21,19 @@ const KEY = 'cryptomus_payment_api_key';
 const MERCHANT = 'merchant-uuid-abc';
 
 describe('createCryptomusVerifier', () => {
+	it.each([null, '', false, '19 USD', -1])(
+		'rejects an invalid invoice amount %j',
+		async (amount) => {
+			const payload = { uuid: 'invoice', currency: 'USD', status: 'paid', amount };
+			const sign = cryptomusSign(phpJson(payload), KEY);
+			await expect(
+				createCryptomusVerifier({ merchantUuid: MERCHANT, paymentApiKey: KEY })(
+					{ ...payload, sign },
+					{},
+				),
+			).rejects.toThrow(/amount/);
+		},
+	);
 	it('verifies a correctly-signed webhook and returns a normalized success result', async () => {
 		const verify = createCryptomusVerifier({ merchantUuid: MERCHANT, paymentApiKey: KEY });
 		const payload = {
@@ -29,6 +42,8 @@ describe('createCryptomusVerifier', () => {
 			status: 'paid',
 			amount: '0.12345',
 			currency: 'XMR',
+			payment_amount: '0.12345',
+			payer_currency: 'XMR',
 			address: '4abc...',
 			txid: 'tx-1',
 			confirmations: 6,
@@ -59,6 +74,8 @@ describe('createCryptomusVerifier', () => {
 			status: 'paid',
 			amount: '1.00',
 			currency: 'USDT',
+			payment_amount: '1.00',
+			payer_currency: 'USDT',
 			url_callback: 'https://merchant.example/webhooks/cryptomus',
 		};
 		const sign = cryptomusSign(phpJson(payload), KEY);
@@ -83,6 +100,8 @@ describe('createCryptomusVerifier', () => {
 			status: 'paid',
 			amount: '0.5',
 			currency: 'XMR',
+			payment_amount: '0.5',
+			payer_currency: 'XMR',
 			address: '4abc...',
 		};
 		const sign = cryptomusSign(JSON.stringify(payload), KEY);
@@ -253,6 +272,8 @@ describe('createCryptomusCreator', () => {
 			...JSON.parse(sentBody!),
 			uuid: 'u1',
 			status: 'paid',
+			payment_amount: '1',
+			payer_currency: 'XMR',
 			address: 'a1',
 		};
 		// The payload carries callback/return URLs, so it must be signed PHP-style
@@ -265,3 +286,33 @@ describe('createCryptomusCreator', () => {
 		expect(result!.paymentId).toBe('u1');
 	});
 });
+
+it.each([
+	['USD', '19.99', 'USD', '19.98', '19.99', 'partial'],
+	['USD', '19.99', 'BTC', '0.00019', '0.0002', 'partial'],
+	['USD', '19.99', 'BTC', '0.0002', '0.0002', 'success'],
+	['XMR', '1.000000000001', 'XMR', '1.000000000000', '1.000000000001', 'partial'],
+	['USD', '19.99', 'USD', '20.00', '19.99', 'success'],
+])(
+	'checks payer units for invoice %s %s and paid %s %s',
+	async (currency, amount, payer_currency, payment_amount, payer_amount, status) => {
+		const payload = {
+			uuid: 'order',
+			status: 'paid',
+			amount,
+			currency,
+			payment_amount,
+			payer_amount,
+			payer_currency,
+		};
+		const verify = createCryptomusVerifier({ merchantUuid: MERCHANT, paymentApiKey: KEY });
+		const result = asPayment(
+			await verify({ ...payload, sign: cryptomusSign(phpJson(payload), KEY) }, {}),
+		);
+		expect(result).toMatchObject({
+			status,
+			currency: status === 'partial' ? payer_currency : currency,
+			amount: Number(status === 'partial' ? payment_amount : amount),
+		});
+	},
+);

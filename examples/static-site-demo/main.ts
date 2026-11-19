@@ -53,7 +53,7 @@ if (sessionId && statusEl) {
 payments.onPending((result) => {
 	if (!statusEl) return;
 	statusEl.style.display = 'block';
-	statusEl.innerHTML = renderPendingHtml(result);
+	statusEl.replaceChildren(renderPending(result));
 	if (result.paymentId) {
 		if (result.provider !== 'stripe') startStatusPolling(result.paymentId);
 		if (result.provider === 'monero') {
@@ -82,7 +82,7 @@ payments.onPending((result) => {
 payments.onError((err) => {
 	if (!statusEl) return;
 	statusEl.style.display = 'block';
-	statusEl.innerHTML = `<strong>Payment error:</strong> ${err.message}`;
+	statusEl.textContent = `Payment error: ${err.message}`;
 });
 
 document.getElementById('stripe-tile')?.addEventListener('click', () => {
@@ -181,58 +181,64 @@ async function simulateMockPayment(paymentId: string, endpoint: string) {
 	});
 }
 
-function renderPendingHtml(result: {
+function renderPending(result: {
 	provider: string;
 	paymentId: string;
 	metadata: Record<string, unknown>;
-}): string {
-	const header = `<strong>Awaiting confirmation…</strong><br />Provider: ${result.provider}<br />Payment ID: ${result.paymentId}<br />`;
-	if (result.provider === 'monero') {
-		const address = readMetaString(result.metadata, 'address');
-		const xmrAmount = readMetaString(result.metadata, 'xmrAmount');
-		const uri = readMetaString(result.metadata, 'uri');
-		return `${header}
-			<div class="kv"><span>Send exactly</span><code>${xmrAmount} XMR</code></div>
-			<div class="kv"><span>To</span><code>${address}</code></div>
-			<div class="kv"><span>monero: URI</span><code>${uri}</code></div>
-			<button type="button" id="mock-pay-btn">Simulate buyer payment (mock mode)</button>`;
+}): DocumentFragment {
+	const fragment = document.createDocumentFragment();
+	const title = document.createElement('strong');
+	title.textContent = 'Awaiting confirmation…';
+	fragment.append(
+		title,
+		document.createElement('br'),
+		`Provider: ${result.provider}`,
+		document.createElement('br'),
+		`Payment ID: ${result.paymentId}`,
+		document.createElement('br'),
+	);
+	const meta = (key: string) => readMetaString(result.metadata, key);
+	const instruction = (label: string, text: string) => {
+		const row = document.createElement('div');
+		row.className = 'kv';
+		const name = document.createElement('span');
+		name.textContent = label;
+		const code = document.createElement('code');
+		code.textContent = text;
+		row.append(name, code);
+		fragment.append(row);
+	};
+	const wallet = result.provider;
+	const amounts: Record<string, string> = {
+		monero: meta('xmrAmount') + ' XMR',
+		zano: meta('assetAmount') + ' ' + meta('ticker'),
+		fusd: meta('assetAmount') + ' ' + meta('ticker'),
+		bitcoin: meta('btcAmount') + ' BTC',
+		'bitcoin-cash': meta('bchAmount') + ' BCH',
+	};
+	if (Object.hasOwn(amounts, wallet)) {
+		instruction('Send exactly', amounts[wallet]);
+		instruction('To', meta('address'));
+		instruction('Wallet link', meta('uri'));
+		const button = document.createElement('button');
+		button.type = 'button';
+		button.id = 'mock-pay-btn';
+		button.textContent = wallet.startsWith('bitcoin')
+			? 'Pay from the regtest buyer wallet (regtest mode)'
+			: 'Simulate buyer payment (mock mode)';
+		fragment.append(button);
+	} else {
+		if (meta('address')) instruction('To', meta('address'));
+		const qr = meta('qr');
+		if (/^https:\/\/|^data:image\/(?:png|jpeg|webp);base64,/i.test(qr)) {
+			const img = document.createElement('img');
+			img.src = qr;
+			img.width = 200;
+			img.alt = 'Payment QR code';
+			fragment.append(img);
+		}
 	}
-	if (ZANO_PROVIDER_IDS.has(result.provider)) {
-		const address = readMetaString(result.metadata, 'address');
-		const assetAmount = readMetaString(result.metadata, 'assetAmount');
-		const ticker = readMetaString(result.metadata, 'ticker');
-		const uri = readMetaString(result.metadata, 'uri');
-		return `${header}
-			<div class="kv"><span>Send exactly</span><code>${assetAmount} ${ticker}</code></div>
-			<div class="kv"><span>To</span><code>${address}</code></div>
-			<div class="kv"><span>zano: link</span><code>${uri}</code></div>
-			<button type="button" id="mock-pay-btn">Simulate buyer payment (mock mode)</button>`;
-	}
-	if (result.provider === 'bitcoin') {
-		const address = readMetaString(result.metadata, 'address');
-		const btcAmount = readMetaString(result.metadata, 'btcAmount');
-		const uri = readMetaString(result.metadata, 'uri');
-		return `${header}
-			<div class="kv"><span>Send exactly</span><code>${btcAmount} BTC</code></div>
-			<div class="kv"><span>To</span><code>${address}</code></div>
-			<div class="kv"><span>bitcoin: link</span><code>${uri}</code></div>
-			<button type="button" id="mock-pay-btn">Pay from the regtest buyer wallet (regtest mode)</button>`;
-	}
-	if (result.provider === 'bitcoin-cash') {
-		const address = readMetaString(result.metadata, 'address');
-		const bchAmount = readMetaString(result.metadata, 'bchAmount');
-		const uri = readMetaString(result.metadata, 'uri');
-		return `${header}
-			<div class="kv"><span>Send exactly</span><code>${bchAmount} BCH</code></div>
-			<div class="kv"><span>To</span><code>${address}</code></div>
-			<div class="kv"><span>Wallet link</span><code>${uri}</code></div>
-			<button type="button" id="mock-pay-btn">Pay from the regtest buyer wallet (regtest mode)</button>`;
-	}
-	const qr = result.metadata.qr;
-	const qrImg = typeof qr === 'string' ? `<img src="${qr}" width="200" alt="" />` : '';
-	const address = result.metadata.address;
-	const addressHtml = typeof address === 'string' ? `<code>${address}</code>` : '';
-	return `${header}${addressHtml}${qrImg}`;
+	return fragment;
 }
 
 function readMetaString(metadata: Record<string, unknown>, key: string): string {

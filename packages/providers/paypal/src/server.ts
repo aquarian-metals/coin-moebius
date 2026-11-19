@@ -1,3 +1,4 @@
+import { assertPaymentEvidence } from '@aquarian-metals/coin-moebius-core';
 /**
  * PayPal server-side webhook verifiers.
  *
@@ -497,6 +498,14 @@ function toPaymentResult(event: Record<string, unknown>): WebhookEvent | null {
 	if (status === null) return null;
 
 	const resource = typed.resource ?? {};
+	if (status === 'success') {
+		assertPaymentEvidence(
+			readPaymentId(resource),
+			resource.amount?.value,
+			resource.amount?.currency_code,
+		);
+		if (typeof resource.amount?.value !== 'string') throw new Error('Invalid capture amount');
+	}
 	const { amount, currency } = readAmountAndCurrency(resource, eventType);
 	const paymentId = readPaymentId(resource);
 

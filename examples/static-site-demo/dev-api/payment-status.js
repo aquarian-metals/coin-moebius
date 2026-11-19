@@ -11,6 +11,7 @@ import { toPublicPaymentResult } from '@aquarian-metals/coin-moebius-core';
 import { getStore } from './_shared.js';
 
 export async function handlePaymentStatus(req, res) {
+	res.setHeader('Cache-Control', 'private, no-store');
 	const url = new URL(req.url, 'http://localhost');
 	const paymentId = url.searchParams.get('paymentId');
 

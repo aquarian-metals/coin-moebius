@@ -1,3 +1,4 @@
+import { assertPaymentEvidence } from '@aquarian-metals/coin-moebius-core';
 /**
  * Authorize.Net server-side webhook verifier. Implements Authorize.Net's
  * HMAC-SHA512 signature scheme:
@@ -159,6 +160,12 @@ function toPaymentResult(
 	if (status === null) return null;
 
 	const payload = envelope.payload ?? {};
+	if (status === 'success')
+		assertPaymentEvidence(
+			payload.id,
+			payload.settleAmount ?? payload.authAmount ?? payload.amount,
+			currency,
+		);
 	const amount = readAmount(payload);
 	return {
 		kind: 'payment',

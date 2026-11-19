@@ -2,6 +2,12 @@
 
 How to update Coin Moebius SDK integrations across versions. Versioned in the order changes shipped — older sections still apply if you're upgrading from an older starting point.
 
+## Payment verification hardening (unreleased)
+
+Successful one-time gateway events now require explicit settlement evidence. Keep the original order pending when verification throws, retain a sanitized diagnostic, and reconcile the payment through the provider. A malformed paid notification must never create a free order. For Cryptomus retain the transaction's payer currency, gross payment and cross-currency payer quote. For NOWPayments retain both quoted and actually paid coin amounts. These adapters now report underpayment as partial even when the gateway labels it paid or finished. Partial amounts use the currency the buyer sent.
+
+Browser status responses from `toPublicPaymentResult` retain only string `metadata.productId` and a nonnegative integer `metadata.confirmations`. Merchants needing additional public fields should select them individually after authorizing access to the order. Full verified metadata is available on the server.
+
 ## From `0.1.0-beta.1` to the next release (unreleased as of 2026-05-12)
 
 The first batch of post-beta changes consolidates several breaking changes that the hardening pass surfaced. Apply them in any order — they're independent.

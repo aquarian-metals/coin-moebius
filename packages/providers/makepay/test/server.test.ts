@@ -353,11 +353,12 @@ describe('createMakepayVerifier — defensive field handling', () => {
 		expect((result!.metadata as Record<string, string>).deliveryId).toBe('body_dlv_42');
 	});
 
-	it('coerces a non-numeric amount to 0 without throwing', async () => {
+	it('rejects a completed payment with a non-numeric amount', async () => {
 		const verify = createMakepayVerifier({ webhookSecret: WEBHOOK_SECRET });
 		const body = paymentBody({ link: { amount: 'not-a-number' }, session: { status: 'complete' } });
-		const result = asPayment(await verify(body, { 'x-makepay-signature': await signHeader(body) }));
-		expect(result!.amount).toBe(0);
+		await expect(verify(body, { 'x-makepay-signature': await signHeader(body) })).rejects.toThrow(
+			/amount/,
+		);
 	});
 });
 

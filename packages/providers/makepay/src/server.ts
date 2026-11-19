@@ -1,3 +1,4 @@
+import { assertPaymentEvidence } from '@aquarian-metals/coin-moebius-core';
 /**
  * MakePay server-side webhook verifier.
  *
@@ -255,10 +256,18 @@ function toPaymentEvent(payload: MakepayWebhookPayload, deliveryId?: string): We
 	const session = payload.session ?? {};
 	const eventType = typeof payload.event?.type === 'string' ? payload.event.type : undefined;
 	const sessionStatus = typeof session.status === 'string' ? session.status : undefined;
+	const status = mapMakepaySessionStatus(sessionStatus, eventType);
+	const paymentId = stringField(pl.uid) ?? stringField(pl.id) ?? stringField(session.id) ?? '';
+	if (status === 'success')
+		assertPaymentEvidence(
+			paymentId,
+			pl.amount ?? session.invoiceAmount,
+			pl.currency ?? session.invoiceAsset,
+		);
 	return {
 		kind: 'payment',
-		status: mapMakepaySessionStatus(sessionStatus, eventType),
-		paymentId: stringField(pl.uid) ?? stringField(pl.id) ?? stringField(session.id) ?? '',
+		status,
+		paymentId,
 		provider: 'makepay',
 		amount: numberField(pl.amount ?? session.invoiceAmount),
 		currency: (stringField(pl.currency) ?? stringField(session.invoiceAsset) ?? '').toUpperCase(),
