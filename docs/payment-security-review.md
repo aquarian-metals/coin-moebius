@@ -40,6 +40,28 @@ The Stripe test named for unpaid delayed checkout supplied an **open** session. 
 
 The test configuration discovered package tests and measured package source coverage. It skipped the demo handlers and the instructions merchants copy. Signature tests could pass while the demo chose a public secret, and provider tests could pass while the checkout route trusted the browser. An Authorize.Net test even required the old fraud-approval behavior. A higher coverage percentage alone would have preserved that mistake.
 
+## How to discover missing cases before implementation
+
+The earlier audit identified coverage gaps and added regressions. The following is a proposed review practice for changes to checkout, verification, or delivery. The author records the scenarios in the pull request. A second reviewer challenges them before release. This practice is not enforced by the current CI.
+
+1. **Write the merchant's promise first.** For a paid download, only the buyer on the saved order may receive the purchased item, once the agreed price in the agreed currency has been paid. A retry must still let that buyer receive it. List any deliberate exception, such as a merchant-authorized free order, separately.
+2. **List the facts that can change independently.** Use the provider's current event documentation, a sanitized sandbox event when available, and the merchant's actual checkout and delivery steps. Record which system owns each fact. For Stripe, checkout completion and payment settlement are separate facts. For pricing, the browser's display price and the merchant's saved quote are separate facts. Building this list from the implementation alone risks copying its assumptions into the tests.
+3. **Generate cases by changing one fact at a time.** Begin with a valid paid order. Keep everything else valid while changing the buyer, product, amount, currency, provider, payment state, or order reference. For each fact required for delivery, include a case where it is missing. Write down the expected access decision before inspecting the code. Then combine facts that different systems control or that can change at different times. Prioritize combinations that could release goods early, grant access to the wrong buyer, or strand a buyer who paid.
+4. **Walk through time as well as values.** Start with the same order and vary what arrives first, what arrives twice, what never arrives, and where the process can stop. At each step record the order state and who can download. Cover recovery as well as refusal. For example, if the browser has returned, the checkout is complete, and the bank payment is pending, the buyer should see pending and have zero grants. Later success should produce one grant even if the buyer closed the browser. Later failure should produce zero.
+5. **Give the reviewer a concrete challenge.** Before reading the implementation, the reviewer uses the provider source and the merchant promise to propose a plausible case missing from the author's list. The review records the case, expected outcome, and test, or the documented reason the case cannot occur. Each relevant row links to an automated test or dated sandbox result. An unverified high-impact row stays open. When a new case is found, check other providers and copied examples that make the same assumption.
+
+Start with this question sheet for each affected flow:
+
+| Ask before writing the test                                 | Example case the question uncovers                                                                           |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Which two facts are we assuming always agree?               | Checkout is complete while payment is unpaid.                                                                |
+| Who supplied each value, and what if two sources disagree?  | A valid product ID arrives with a browser price that differs from the saved quote.                           |
+| What if genuine evidence belongs to another order or buyer? | A real paid event has the correct amount and currency but belongs to a different checkout.                   |
+| What can happen between two successful steps?               | The grant commits and the worker stops before acknowledging it. A retry must preserve one grant.             |
+| Which legitimate customer could a stricter rule block?      | A partial payment receives a later top-up, or a merchant-authorized discount reduces the amount due to zero. |
+
+For changes to the decision that grants access, also check the strength of the tests locally: temporarily remove one required check from the decision, confirm its named test fails, then restore it. If the suite still passes, the asserted outcome or the scenario is incomplete. This is a proposed release check; the audit did not run a mutation-testing campaign.
+
 ## Tests in this branch
 
 The standard test command now includes the demo. The integration tests call the checkout, webhook and status handlers with local fixtures and replace outbound gateway calls. They inspect the price sent to the gateway and the state read back by the buyer. They cover unpaid completion, delayed results, missing credentials, wrong amount, wrong currency, an unknown order, duplicate events, and a late pending event. The standalone example test covers partial payment, delivery failure, retry and concurrent confirmations.
