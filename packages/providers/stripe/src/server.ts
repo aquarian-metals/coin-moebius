@@ -241,7 +241,11 @@ export function createStripeVerifier(config: StripeVerifierConfig) {
 
 		if (event.type === 'invoice.payment_succeeded') {
 			const invoice = event.data.object;
-			if (readStringField(invoice, 'subscription')) {
+			if (
+				invoice.parent?.type === 'subscription_details' ||
+				readInvoiceSubscriptionId(invoice) ||
+				invoice.billing_reason?.startsWith('subscription')
+			) {
 				// Subscription invoice. Skip the first cycle — `subscription.created`
 				// already reported the signup. Only emit `subscription.renewed` for
 				// follow-on cycles.
@@ -322,12 +326,21 @@ function toSubscriptionEvent(
 	};
 }
 
+function readInvoiceSubscriptionId(invoice: Stripe.Invoice): string | undefined {
+	if (invoice.parent) {
+		return invoice.parent.type === 'subscription_details'
+			? readStringField(invoice.parent.subscription_details, 'subscription')
+			: undefined;
+	}
+	return readStringField(invoice, 'subscription');
+}
+
 function toSubscriptionEventFromInvoice(
 	event: Stripe.Event & { type: 'invoice.payment_succeeded' | 'invoice.payment_failed' },
 	type: 'subscription.renewed' | 'subscription.payment_failed',
 ): WebhookEvent | null {
 	const invoice = event.data.object;
-	const subscriptionId = readStringField(invoice, 'subscription');
+	const subscriptionId = readInvoiceSubscriptionId(invoice);
 	if (!subscriptionId) return null;
 	const customerRef =
 		typeof invoice.customer === 'string' ? invoice.customer : (invoice.customer?.id ?? null);
@@ -355,7 +368,7 @@ function toSubscriptionEventFromInvoice(
 		status,
 		currentPeriodEnd: invoice.period_end ?? null,
 		amount: minorToMajorUnits(
-			invoice.amount_paid ?? invoice.amount_due ?? 0,
+			(type === 'subscription.payment_failed' ? invoice.amount_due : invoice.amount_paid) ?? 0,
 			invoice.currency ?? 'usd',
 		),
 		currency,

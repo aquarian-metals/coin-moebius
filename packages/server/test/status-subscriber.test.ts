@@ -61,6 +61,63 @@ describe('createStatusSubscriber', () => {
 		expect(onSuccess).toHaveBeenCalledTimes(1);
 	});
 
+	it.each([false, true])('serializes slow reads and honors cancellation (%s)', async (cancel) => {
+		let finish!: (record: PaymentRecord) => void;
+		const get = vi.fn(
+			() =>
+				new Promise<PaymentRecord>((resolve) => {
+					finish = resolve;
+				}),
+		);
+		const onSuccess = vi.fn();
+		const stop = createStatusSubscriber({ get, upsert: async () => undefined })(
+			'p1',
+			{ onSuccess },
+			{ pollIntervalMs: 10 },
+		);
+		await vi.advanceTimersByTimeAsync(50);
+		expect(get).toHaveBeenCalledOnce();
+		if (cancel) stop();
+		finish(baseRecord('success'));
+		await vi.advanceTimersByTimeAsync(50);
+		expect(onSuccess).toHaveBeenCalledTimes(cancel ? 0 : 1);
+	});
+	it('retries a transient read error and ignores the wrong order', async () => {
+		const get = vi
+			.fn()
+			.mockRejectedValueOnce(new Error('unavailable'))
+			.mockResolvedValueOnce({ ...baseRecord('success'), paymentId: 'other' })
+			.mockResolvedValueOnce(baseRecord('success'));
+		const onSuccess = vi.fn();
+		createStatusSubscriber({ get, upsert: async () => undefined })(
+			'p1',
+			{ onSuccess },
+			{ pollIntervalMs: 10 },
+		);
+		await vi.advanceTimersByTimeAsync(20);
+		expect(onSuccess).not.toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(10);
+		expect(onSuccess).toHaveBeenCalledOnce();
+	});
+	it('times out once even if the store never responds', async () => {
+		let finish!: (record: PaymentRecord) => void;
+		const get = () =>
+			new Promise<PaymentRecord>((resolve) => {
+				finish = resolve;
+			});
+		const onSuccess = vi.fn(),
+			onTimeout = vi.fn();
+		createStatusSubscriber({ get, upsert: async () => undefined })(
+			'p1',
+			{ onSuccess, onTimeout },
+			{ pollIntervalMs: 10, timeoutMs: 30 },
+		);
+		await vi.advanceTimersByTimeAsync(40);
+		finish(baseRecord('success'));
+		await vi.advanceTimersByTimeAsync(10);
+		expect(onTimeout).toHaveBeenCalledOnce();
+		expect(onSuccess).not.toHaveBeenCalled();
+	});
 	it('fires onTimeout after timeoutMs', async () => {
 		const subscribe = createStatusSubscriber(fakeStore([baseRecord('pending')]));
 		const onTimeout = vi.fn();

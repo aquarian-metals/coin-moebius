@@ -94,6 +94,14 @@ describe('createCryptomusVerifier', () => {
 		expect(result!.paymentId).toBe('crypt-uuid-str');
 	});
 
+	it.each(['cancel', 'fail', 'system_fail'])('reports %s as a failed payment', async (status) => {
+		const verify = createCryptomusVerifier({ merchantUuid: MERCHANT, paymentApiKey: KEY });
+		const payload = { uuid: 'order', status, amount: '19.99', currency: 'USD' };
+		expect(
+			asPayment(await verify({ ...payload, sign: cryptomusSign(phpJson(payload), KEY) }, {}))
+				?.status,
+		).toBe('failed');
+	});
 	it.each(['confirmed', 'confirm_check', 'wrong_amount_waiting', 'unknown'])(
 		'withholds success for %s',
 		async (status) => {

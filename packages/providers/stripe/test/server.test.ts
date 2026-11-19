@@ -608,6 +608,53 @@ describe('createStripeVerifier — subscription events', () => {
 		expect(result!.status).toBe('past_due');
 	});
 
+	it.each([
+		['invoice.payment_succeeded', 'subscription_cycle', 'subscription.renewed'],
+		['invoice.payment_failed', 'subscription_cycle', 'subscription.payment_failed'],
+		['invoice.payment_succeeded', 'subscription_create', null],
+	])('routes current invoice parent for %s / %s', async (type, billing_reason, expected) => {
+		const verify = createStripeVerifier({ endpointSecret: ENDPOINT_SECRET });
+		for (const subscription of ['sub_parent', { id: 'sub_parent' }]) {
+			const { body, headers } = signedRequest({
+				type,
+				data: {
+					object: {
+						id: 'in_current',
+						billing_reason,
+						parent: { type: 'subscription_details', subscription_details: { subscription } },
+						amount_paid: 0,
+						amount_due: 1999,
+						currency: 'usd',
+					},
+				},
+			});
+			const result = await verify(body, headers);
+			if (expected === null) expect(result).toBeNull();
+			else
+				expect(result).toMatchObject({
+					kind: 'subscription',
+					subscriptionId: 'sub_parent',
+					type: expected,
+					amount: type === 'invoice.payment_failed' ? 19.99 : 0,
+				});
+		}
+	});
+	it('withholds a one-time sale for a subscription invoice missing its reference', async () => {
+		const verify = createStripeVerifier({ endpointSecret: ENDPOINT_SECRET });
+		const { body, headers } = signedRequest({
+			type: 'invoice.payment_succeeded',
+			data: {
+				object: {
+					id: 'in_unknown_sub',
+					billing_reason: 'subscription_cycle',
+					parent: { type: 'subscription_details', subscription_details: {} },
+					amount_paid: 1999,
+					currency: 'usd',
+				},
+			},
+		});
+		expect(await verify(body, headers)).toBeNull();
+	});
 	it('maps invoice.payment_succeeded with billing_reason=subscription_cycle to subscription.renewed', async () => {
 		// Renewal cycles emit through invoice events, not customer.subscription.*.
 		// The verifier should pick this up as a renewal — not a one-time payment.

@@ -144,32 +144,41 @@ export function createStatusSubscriber(store: PaymentStore) {
 		options: { pollIntervalMs?: number; timeoutMs?: number } = {},
 	) {
 		const { pollIntervalMs = 15000, timeoutMs = 30 * 60 * 1000 } = options;
-		const start = Date.now();
-
-		// setInterval expects a sync callback; we run async work in an IIFE
-		// wrapped with `void` for explicit fire-and-forget semantics. The
-		// re-entrancy edge case (slow store.get overlapping the next tick) is
-		// a known Phase 3 candidate for a setTimeout-chain refactor.
-		const interval = setInterval(() => {
-			void (async () => {
-				if (Date.now() - start > timeoutMs) {
-					clearInterval(interval);
-					handlers.onTimeout?.();
+		let stopped = false;
+		let timer: ReturnType<typeof setTimeout>;
+		const deadline = setTimeout(() => {
+			stop();
+			handlers.onTimeout?.();
+		}, timeoutMs);
+		function stop() {
+			stopped = true;
+			clearTimeout(timer);
+			clearTimeout(deadline);
+		}
+		function schedule() {
+			timer = setTimeout(() => void poll(), pollIntervalMs);
+		}
+		async function poll(): Promise<void> {
+			let record;
+			try {
+				record = await store.get(paymentId);
+			} catch {
+				if (!stopped) schedule();
+				return;
+			}
+			if (stopped) return;
+			if (record?.paymentId === paymentId) {
+				if (record.status === 'success') {
+					stop();
+					handlers.onSuccess?.(record);
 					return;
 				}
-
-				const record = await store.get(paymentId);
-				if (!record) return;
-
 				if (record.status === 'pending') handlers.onPending?.(record);
-				if (record.status === 'success') {
-					clearInterval(interval);
-					handlers.onSuccess?.(record);
-				}
-			})();
-		}, pollIntervalMs);
-
-		return () => clearInterval(interval);
+			}
+			if (!stopped) schedule();
+		}
+		schedule();
+		return stop;
 	};
 }
 

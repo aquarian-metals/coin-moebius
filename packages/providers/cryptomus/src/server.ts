@@ -26,6 +26,20 @@ export interface CryptomusVerifierConfig {
 	paymentApiKey: string;
 }
 
+function paymentStatus(status: unknown) {
+	switch (status) {
+		case 'paid':
+		case 'paid_over':
+			return 'success';
+		case 'fail':
+		case 'system_fail':
+		case 'cancel':
+			return 'failed';
+		default:
+			return 'pending';
+	}
+}
+
 export function createCryptomusVerifier(config: CryptomusVerifierConfig) {
 	if (!config.paymentApiKey?.trim()) throw new Error('Missing cryptomus paymentApiKey');
 	// Replay note: unlike the Monero verifier, we can't enforce a freshness
@@ -82,7 +96,7 @@ export function createCryptomusVerifier(config: CryptomusVerifierConfig) {
 
 		return {
 			kind: 'payment',
-			status: status === 'paid' || status === 'paid_over' ? 'success' : 'pending',
+			status: paymentStatus(status),
 			paymentId: (raw.uuid ?? raw.order_id) as string,
 			provider: 'cryptomus',
 			amount: Number(raw.amount),
