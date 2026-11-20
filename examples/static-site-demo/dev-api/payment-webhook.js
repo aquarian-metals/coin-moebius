@@ -30,6 +30,8 @@ import {
 	registerVerifierOnce,
 } from './_shared.js';
 
+const stripeSessions = new Map();
+
 function ensureVerifiersRegistered() {
 	if (process.env.STRIPE_WEBHOOK_SECRET) {
 		registerVerifierOnce('stripe', () =>
@@ -47,22 +49,26 @@ function ensureVerifiersRegistered() {
 			}),
 		);
 	}
-	registerVerifierOnce('monero', () => {
-		const v = createMoneroVerifier({ hmacSecret: getMoneroHmacSecret() });
-		return v.verify;
-	});
-	registerVerifierOnce('zano', () => {
-		const v = createZanoVerifier({ hmacSecret: getZanoHmacSecret() });
-		return v.verify;
-	});
-	registerVerifierOnce('bitcoin', () => {
-		const v = createBitcoinVerifier({ hmacSecret: getBitcoinHmacSecret() });
-		return v.verify;
-	});
-	registerVerifierOnce('bitcoin-cash', () => {
-		const v = createBitcoinCashVerifier({ hmacSecret: getBitcoinCashHmacSecret() });
-		return v.verify;
-	});
+	if (getMoneroHmacSecret())
+		registerVerifierOnce(
+			'monero',
+			() => createMoneroVerifier({ hmacSecret: getMoneroHmacSecret() }).verify,
+		);
+	if (getZanoHmacSecret())
+		registerVerifierOnce(
+			'zano',
+			() => createZanoVerifier({ hmacSecret: getZanoHmacSecret() }).verify,
+		);
+	if (getBitcoinHmacSecret())
+		registerVerifierOnce(
+			'bitcoin',
+			() => createBitcoinVerifier({ hmacSecret: getBitcoinHmacSecret() }).verify,
+		);
+	if (getBitcoinCashHmacSecret())
+		registerVerifierOnce(
+			'bitcoin-cash',
+			() => createBitcoinCashVerifier({ hmacSecret: getBitcoinCashHmacSecret() }).verify,
+		);
 }
 
 export async function handlePaymentWebhook(req, res) {
@@ -71,34 +77,48 @@ export async function handlePaymentWebhook(req, res) {
 	const rawText = await readText(req);
 	const headers = req.headers;
 
-	let parsed;
 	try {
-		parsed = rawText ? JSON.parse(rawText) : {};
-	} catch {
-		res.statusCode = 400;
-		res.end('invalid JSON body');
-		return;
-	}
-
-	try {
-		const stripeRaw = headers['stripe-signature'] ? rawText : parsed;
-		const result = await getRegistry().verify(stripeRaw, headers, providerFromPath(req.url));
-		if (!result) {
+		const result = await getRegistry().verify(rawText, headers, providerFromPath(req.url));
+		if (result?.kind !== 'payment') {
 			res.statusCode = 200;
 			res.end('event ignored');
 			return;
 		}
 
-		const existing = await getStore().get(result.paymentId);
+		const session = result.provider === 'stripe' && result.raw?.data?.object;
+		const paymentId =
+			session?.object === 'checkout.session'
+				? session.id
+				: result.provider === 'stripe'
+					? (stripeSessions.get(result.paymentId) ?? result.paymentId)
+					: result.paymentId;
+		const existing = await getStore().get(paymentId);
+		if (!existing || existing.provider !== result.provider) {
+			res.statusCode = 409;
+			res.end('No matching checkout');
+			return;
+		}
+		const expectedAmount = existing.metadata.invoiceAmount ?? existing.amount;
+		if (
+			result.currency !== existing.currency ||
+			(result.status === 'success' && result.amount !== expectedAmount)
+		) {
+			res.statusCode = 409;
+			res.end('Payment does not match checkout');
+			return;
+		}
+		if (session?.object === 'checkout.session') stripeSessions.set(result.paymentId, paymentId);
 		await getStore().upsert({
 			...existing,
-			...result,
+			status: result.status,
+			amount: result.status === 'pending' ? expectedAmount : result.amount,
+			timestamp: result.timestamp,
 			metadata: {
-				...(existing?.metadata ?? {}),
+				...existing.metadata,
 				...result.metadata,
+				productId: existing.metadata.productId,
+				invoiceAmount: expectedAmount,
 			},
-			createdAt: existing?.createdAt ?? result.timestamp,
-			updatedAt: result.timestamp,
 		});
 
 		res.statusCode = 200;

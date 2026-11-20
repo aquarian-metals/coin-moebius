@@ -73,6 +73,10 @@ describe('createAuthorizenetVerifier', () => {
 		return createAuthorizenetVerifier({ signatureKey: SIGNATURE_KEY });
 	}
 
+	it('rejects a capture amount with a nonnumeric suffix', async () => {
+		const body = sampleBody({ amount: '9.99 USD' });
+		await expect(makeVerifier().verify(body, await signedHeaders(body))).rejects.toThrow(/amount/);
+	});
 	it('maps authcapture to success and surfaces the amount + id', async () => {
 		const verifier = makeVerifier();
 		const body = sampleBody({ eventType: 'net.authorize.payment.authcapture.created' });
@@ -127,11 +131,23 @@ describe('createAuthorizenetVerifier', () => {
 		}
 	});
 
-	it('maps fraud.approved to success', async () => {
+	it.each([2, 3, 4, undefined])(
+		'withholds capture and renewal for response code %s',
+		async (responseCode) => {
+			for (const subscriptionId of [undefined, 456]) {
+				const body = JSON.stringify({
+					eventType: 'net.authorize.payment.authcapture.created',
+					payload: { id: 'transaction', responseCode, subscriptionId },
+				});
+				expect(await makeVerifier().verify(body, await signedHeaders(body))).toBeNull();
+			}
+		},
+	);
+	it('maps fraud.approved to pending', async () => {
 		const verifier = makeVerifier();
 		const body = sampleBody({ eventType: 'net.authorize.payment.fraud.approved' });
 		const result = asPayment(await verifier.verify(body, await signedHeaders(body)));
-		expect(result?.status).toBe('success');
+		expect(result?.status).toBe('pending');
 	});
 
 	it('returns null for unrecognized event types (signature still validated)', async () => {
@@ -276,6 +292,7 @@ describe('event → SubscriptionEvent mapping (Authorize.net ARB)', () => {
 			eventType: 'net.authorize.payment.authcapture.created',
 			payload: {
 				id: 'TRANS_RENEW_001',
+				responseCode: 1,
 				subscriptionId: 4567,
 				authAmount: '29.99',
 				settleAmount: '29.99',
@@ -292,7 +309,7 @@ describe('event → SubscriptionEvent mapping (Authorize.net ARB)', () => {
 		const body = JSON.stringify({
 			notificationId: 'plain_capture',
 			eventType: 'net.authorize.payment.authcapture.created',
-			payload: { id: 'TRANS_ONE_TIME', authAmount: '5.00', settleAmount: '5.00' },
+			payload: { id: 'TRANS_ONE_TIME', responseCode: 1, authAmount: '5.00', settleAmount: '5.00' },
 		});
 		const result = asPayment(await makeVerifier().verify(body, await signedHeaders(body)));
 		expect(result?.status).toBe('success');

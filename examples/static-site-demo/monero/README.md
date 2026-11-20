@@ -136,3 +136,5 @@ Caveats:
 | `notify.js`                | Indexer box                                        | Optional `--tx-notify` hook.                                                                  |
 | `monero-indexer.service`   | `/etc/systemd/system/` on the indexer box          | systemd unit for `node indexer.js`.                                                           |
 | `docker-compose.yml`       | Anywhere with Docker                               | Optional all-in-one boot.                                                                     |
+
+The receiver imports `../record-indexer-payment.js`. Include that shared module when copying the example, and connect `_store.js` to the same durable order database as checkout and the indexer. Implement the grant with a unique order ID so retries return the existing entitlement.

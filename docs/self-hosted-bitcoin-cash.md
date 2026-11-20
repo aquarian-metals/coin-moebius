@@ -136,10 +136,10 @@ const create = createBitcoinCashCreator({
 });
 
 export default async (req) => {
-  const { productId, metadata } = await req.json();
+  const { productId } = await req.json();
   const price = await priceOf(productId); // from your own product list, e.g. { amount: 19.99, currency: 'USD' }
   if (!price) return new Response('Unknown product', { status: 404 });
-  return Response.json(await create({ productId, ...price, metadata }));
+  return Response.json(await create({ productId, ...price }));
 };
 ```
 
@@ -155,7 +155,6 @@ This code needs to reach your node. If your website host cannot reach a node on 
 
 ```js
 // /api/payment-webhook
-import { isStatusRegression } from '@aquarian-metals/coin-moebius-core';
 import { createVerifierRegistry } from '@aquarian-metals/coin-moebius-server';
 import { createBitcoinCashVerifier } from '@aquarian-metals/coin-moebius-bitcoin-cash/server';
 import { myStore } from './store.js';
@@ -165,34 +164,18 @@ verifiers.register('bitcoin-cash', createBitcoinCashVerifier({ hmacSecret: proce
 
 export default async (req) => {
   const result = await verifiers.verify(await req.text(), Object.fromEntries(req.headers));
-  if (!result) return new Response('', { status: 200 });
-
-  const existing = await myStore.get(result.paymentId);
-  if (existing && isStatusRegression(existing.status, result.status)) {
-    return new Response('', { status: 200 });
-  }
-  const order = {
-    ...existing,
-    ...result,
-    metadata: { ...existing?.metadata, ...result.metadata },
-    createdAt: existing?.createdAt ?? result.timestamp,
-    updatedAt: Date.now(),
-  };
-  await myStore.upsert(order);
-
-  if (result.status === 'success') await fulfill(order);
+  if (result?.kind !== 'payment') return new Response('', { status: 200 });
+  const order = await myStore.get(result.paymentId);
+  if (!order || order.provider !== result.provider || order.currency !== result.currency)
+    return new Response('Order mismatch', { status: 409 });
+  if (result.status === 'success' && result.amount !== order.metadata.invoiceAmount)
+    return new Response('Amount mismatch', { status: 409 });
+  // Implement this in your database: lock the order, apply the status only if
+  // current, and grant the saved product once in the same transaction.
+  await applyVerifiedPaymentOnce(order.paymentId, result);
   return new Response('', { status: 200 });
 };
 ```
-
-Two lines in there matter more than they look:
-
-- **Add the message's details to the saved order; never replace them.** The saved order holds the amount the buyer was asked to pay, and the indexer checks every payment against it. If the order is overwritten with only what the message carries, that amount is gone.
-- **Never move an order backwards.** A "waiting" message that arrives late must not reopen an order that is already paid. `isStatusRegression` makes that check.
-
-`fulfill` gets the whole order, so it knows the product (`order.metadata.productId`) and anything you attached at checkout, such as the buyer's email.
-
-Make `fulfill` safe to run twice for the same order. The indexer can resend a message after a restart, and every payment system in the world does the same.
 
 You also need the small read-only piece every Coin Moebius provider uses, `/api/payment-status`, which looks an order up so the buyer's page can ask "paid yet?". The example folder has it.
 

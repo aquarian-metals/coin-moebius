@@ -59,7 +59,7 @@ export async function handleBitcoinCheckout(req, res) {
 		res.end(JSON.stringify({ error: 'Unknown product' }));
 		return;
 	}
-	const result = await create({ productId, ...price, metadata: body.metadata ?? {} });
+	const result = await create({ productId, ...price });
 
 	res.statusCode = 200;
 	res.setHeader('Content-Type', 'application/json');

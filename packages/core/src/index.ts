@@ -12,7 +12,12 @@ export type {
 	WebhookEvent,
 } from './types.js';
 
-export { minorUnitExponent, minorToMajorUnits, majorToMinorUnits } from './currency.js';
+export {
+	assertPaymentEvidence,
+	minorUnitExponent,
+	minorToMajorUnits,
+	majorToMinorUnits,
+} from './currency.js';
 
 /**
  * Narrow a `WebhookEvent` to its `PaymentResult` variant. Returns the
@@ -43,31 +48,9 @@ function stripKind<T extends { kind: string }>(event: T): Omit<T, 'kind'> {
 }
 
 /**
- * Buyer-shaped keys that should never be echoed to a browser. A verifier puts
- * the gateway's own buyer details on `metadata` (email, name, address, …) for
- * server-side use; sending the whole result back to the page would leak them.
- */
-const BUYER_PII_KEYS = new Set([
-	'email',
-	'customer_email',
-	'payer_email',
-	'buyer_email',
-	'customer_details',
-	'billing_address',
-	'shipping_address',
-	'phone',
-	'name',
-	'first_name',
-	'last_name',
-	'ip_address',
-]);
-
-/**
- * Project a {@link PaymentResult} down to what's safe to return to a BROWSER
- * (W2). Drops the full `raw` gateway event and strips buyer PII from
- * `metadata`, leaving just status/amount/currency/ids. Use this on any status
- * endpoint the SDK's `subscribeToStatus` polls — the verifier's full result is
- * for your server, not the buyer's page.
+ * Project a server-side payment onto a browser status response. Only the product
+ * reference and confirmation count are public metadata by default. Merchant
+ * integrations can add deliberately selected fields in their own response.
  *
  * @example
  *   // status endpoint:
@@ -75,8 +58,14 @@ const BUYER_PII_KEYS = new Set([
  */
 export function toPublicPaymentResult(result: PaymentResult): PaymentResult {
 	const safeMetadata: Record<string, unknown> = {};
-	for (const [key, value] of Object.entries(result.metadata ?? {})) {
-		if (!BUYER_PII_KEYS.has(key)) safeMetadata[key] = value;
+	const { productId, confirmations } = result.metadata ?? {};
+	if (typeof productId === 'string') safeMetadata.productId = productId;
+	if (
+		typeof confirmations === 'number' &&
+		Number.isSafeInteger(confirmations) &&
+		confirmations >= 0
+	) {
+		safeMetadata.confirmations = confirmations;
 	}
 	return {
 		status: result.status,
@@ -208,7 +197,6 @@ export function createPaymentManager(config: PaymentManagerConfig) {
 		) {
 			const { statusEndpoint, onPending, onSuccess, onFailed, onTimeout } = handlers;
 			const { pollIntervalMs = 15000, timeoutMs = 30 * 60 * 1000 } = options;
-			const start = Date.now();
 
 			// W1: a self-scheduling setTimeout chain (not setInterval) so a slow
 			// fetch can't overlap the next tick and pile up; an AbortController so
@@ -223,6 +211,7 @@ export function createPaymentManager(config: PaymentManagerConfig) {
 			const stop = () => {
 				stopped = true;
 				if (timer !== undefined) clearTimeout(timer);
+				clearTimeout(deadline);
 				controller.abort();
 			};
 			// Small +/-10% jitter so many buy buttons don't poll in lockstep.
@@ -233,11 +222,6 @@ export function createPaymentManager(config: PaymentManagerConfig) {
 
 			async function tick(): Promise<void> {
 				if (stopped) return;
-				if (Date.now() - start > timeoutMs) {
-					stop();
-					onTimeout?.();
-					return;
-				}
 				// Don't poll a hidden tab — resume on the next tick when visible.
 				if (typeof document !== 'undefined' && document.hidden) {
 					schedule(nextDelay());
@@ -248,6 +232,11 @@ export function createPaymentManager(config: PaymentManagerConfig) {
 					const res = await fetch(url, { signal: controller.signal });
 					if (res.ok) {
 						const record = (await res.json()) as PaymentResult;
+						if (stopped) return;
+						if (record.paymentId !== paymentId) {
+							schedule(nextDelay());
+							return;
+						}
 						if (record.status === 'success') {
 							stop();
 							onSuccess?.(record);
@@ -271,6 +260,10 @@ export function createPaymentManager(config: PaymentManagerConfig) {
 				if (!stopped) schedule(nextDelay());
 			}
 
+			const deadline = setTimeout(() => {
+				stop();
+				onTimeout?.();
+			}, timeoutMs);
 			schedule(pollIntervalMs);
 			return stop;
 		},

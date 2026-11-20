@@ -9,6 +9,7 @@
  */
 import { createVerifierRegistry } from '@aquarian-metals/coin-moebius-server';
 import { createZanoVerifier } from '@aquarian-metals/coin-moebius-zano/server';
+import { recordIndexerPayment } from '../record-indexer-payment.js';
 import { myStore } from './_store.js';
 
 const verifiers = createVerifierRegistry();
@@ -24,28 +25,15 @@ export default async (req) => {
 		const result = await verifiers.verify(rawBody, headers);
 		if (!result) return new Response('', { status: 200 });
 
-		const existing = await myStore.get(result.paymentId);
-		if (existing && existing.status === result.status) {
-			return new Response('', { status: 200 });
-		}
-
-		await myStore.upsert({
-			...result,
-			createdAt: existing?.createdAt ?? result.timestamp,
-			updatedAt: Date.now(),
-		});
-
-		if (result.status === 'success') {
-			await onPaymentSucceeded(result);
-		}
-
-		return new Response('', { status: 200 });
+		return await recordIndexerPayment(myStore, result, onPaymentSucceeded);
 	} catch (err) {
 		console.error('[payment-webhook] error:', err);
 		return new Response('', { status: 400 });
 	}
 };
 
+// This callback may run again after a restart or lost reply. Insert the grant
+// under a unique order ID using the buyer recorded at checkout.
 async function onPaymentSucceeded(result) {
 	// Replace with your real fulfilment.
 	console.log(

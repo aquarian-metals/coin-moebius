@@ -1,4 +1,5 @@
-import type { WebhookEvent } from '@aquarian-metals/coin-moebius-core';
+import { assertPaymentEvidence } from '@aquarian-metals/coin-moebius-core';
+import type { PaymentStatus, WebhookEvent } from '@aquarian-metals/coin-moebius-core';
 import crypto from 'node:crypto';
 
 // Cryptomus signs with: md5( base64(jsonBody) + paymentApiKey ).
@@ -26,7 +27,22 @@ export interface CryptomusVerifierConfig {
 	paymentApiKey: string;
 }
 
+function paymentStatus(status: unknown) {
+	switch (status) {
+		case 'paid':
+		case 'paid_over':
+			return 'success';
+		case 'fail':
+		case 'system_fail':
+		case 'cancel':
+			return 'failed';
+		default:
+			return 'pending';
+	}
+}
+
 export function createCryptomusVerifier(config: CryptomusVerifierConfig) {
+	if (!config.paymentApiKey?.trim()) throw new Error('Missing cryptomus paymentApiKey');
 	// Replay note: unlike the Monero verifier, we can't enforce a freshness
 	// window here — Cryptomus's webhook payload carries no timestamp/nonce to
 	// bind, and we don't control their sender. Replay is instead neutralized at
@@ -77,18 +93,34 @@ export function createCryptomusVerifier(config: CryptomusVerifierConfig) {
 		}
 
 		const status = raw.status as string;
+		let mapped: PaymentStatus = paymentStatus(status);
+		const id = raw.uuid ?? raw.order_id;
+		let amount = Number(raw.amount);
+		let currency = raw.currency as string;
+		if (mapped === 'success') {
+			assertPaymentEvidence(id, raw.amount, raw.currency);
+			assertPaymentEvidence(id, raw.payment_amount, raw.payer_currency);
+			const payerCurrency = (raw.payer_currency as string).toUpperCase();
+			const sameCurrency = payerCurrency === currency.toUpperCase();
+			const quote = sameCurrency ? raw.amount : raw.payer_amount;
+			assertPaymentEvidence(id, quote, payerCurrency);
+			if (typeof raw.payment_amount !== 'string' || typeof quote !== 'string' || Number(quote) <= 0)
+				throw new Error('Invalid Cryptomus payer amount');
+			if (belowQuote(raw.payment_amount, quote)) {
+				mapped = 'partial';
+				amount = Number(raw.payment_amount);
+				currency = payerCurrency;
+			}
+		}
 		const md = raw.metadata as Record<string, unknown> | undefined;
 
 		return {
 			kind: 'payment',
-			status:
-				status === 'paid' || status === 'paid_over' || status === 'confirmed'
-					? 'success'
-					: 'pending',
+			status: mapped,
 			paymentId: (raw.uuid ?? raw.order_id) as string,
 			provider: 'cryptomus',
-			amount: parseFloat(String(raw.amount)),
-			currency: raw.currency as string,
+			amount,
+			currency,
 			metadata: {
 				address: raw.address,
 				txHash: raw.txid ?? undefined,
@@ -148,7 +180,7 @@ export function createCryptomusCreator(config: CryptomusCreatorConfig) {
 		const body = {
 			amount: input.amount.toString(),
 			currency: input.currency,
-			order_id: `${input.productId}-${Date.now()}`,
+			order_id: crypto.randomUUID(),
 			url_callback: config.callbackUrl,
 			url_return: config.returnUrl,
 		};
@@ -191,6 +223,17 @@ export function createCryptomusCreator(config: CryptomusCreatorConfig) {
 			raw: data,
 		};
 	};
+}
+
+// Compare the provider's unsigned decimal strings without rounding away a coin's smallest unit.
+function belowQuote(received: string, expected: string): boolean {
+	const [paidWhole, paidFraction = ''] = received.split('.');
+	const [dueWhole, dueFraction = ''] = expected.split('.');
+	const whole = BigInt(paidWhole);
+	const due = BigInt(dueWhole);
+	if (whole !== due) return whole < due;
+	const digits = Math.max(paidFraction.length, dueFraction.length);
+	return paidFraction.padEnd(digits, '0') < dueFraction.padEnd(digits, '0');
 }
 
 function timingSafeStringEqual(a: string, b: string): boolean {

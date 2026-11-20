@@ -42,3 +42,16 @@ describe('toPublicPaymentResult (W2 — browser-safe projection)', () => {
 		});
 	});
 });
+
+it('publishes only typed display metadata, including for unexpected provider fields', () => {
+	const record = result();
+	record.metadata = {
+		productId: 'book',
+		confirmations: 3,
+		delivery: { recipient: 'fixture' },
+		customReference: 'internal',
+	};
+	expect(toPublicPaymentResult(record).metadata).toEqual({ productId: 'book', confirmations: 3 });
+	record.metadata = { productId: { nested: 'fixture' }, confirmations: -1 };
+	expect(toPublicPaymentResult(record).metadata).toEqual({});
+});

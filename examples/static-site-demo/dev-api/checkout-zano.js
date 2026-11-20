@@ -83,14 +83,17 @@ export async function handleZanoCheckout(req, res) {
 	const body = await readJson(req);
 	const productId = String(body.productId ?? '');
 	const assetId = typeof body.assetId === 'string' ? body.assetId.toLowerCase() : ZANO_ASSET_ID;
-	const price = Object.hasOwn(PRODUCTS, productId) ? PRODUCTS[productId][assetId] : undefined;
+	const price =
+		Object.hasOwn(PRODUCTS, productId) && Object.hasOwn(PRODUCTS[productId], assetId)
+			? PRODUCTS[productId][assetId]
+			: undefined;
 	if (!price) {
 		res.statusCode = 404;
 		res.setHeader('Content-Type', 'application/json');
 		res.end(JSON.stringify({ error: 'Unknown product' }));
 		return;
 	}
-	const result = await create({ productId, ...price, assetId, metadata: body.metadata ?? {} });
+	const result = await create({ productId, ...price, assetId });
 
 	res.statusCode = 200;
 	res.setHeader('Content-Type', 'application/json');

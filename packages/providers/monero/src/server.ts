@@ -377,7 +377,7 @@ export function createMoneroCreator(config: MoneroCreatorConfig) {
  * the `x-monero-sig` header.
  */
 export function createMoneroVerifier(config: MoneroVerifierConfig): MoneroVerifier {
-	if (!config.hmacSecret) {
+	if (!config.hmacSecret?.trim()) {
 		throw new Error('coin-moebius/monero: hmacSecret missing on verifier config');
 	}
 
@@ -459,7 +459,7 @@ export function createMoneroVerifier(config: MoneroVerifierConfig): MoneroVerifi
  *   process.on('SIGTERM', stop);
  */
 export function createMoneroIndexer(config: MoneroIndexerConfig): MoneroIndexer {
-	if (!config.hmacSecret) {
+	if (!config.hmacSecret?.trim()) {
 		throw new Error('coin-moebius/monero: hmacSecret missing on indexer config');
 	}
 

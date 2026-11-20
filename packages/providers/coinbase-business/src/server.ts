@@ -1,3 +1,4 @@
+import { assertPaymentEvidence } from '@aquarian-metals/coin-moebius-core';
 /**
  * Coinbase Business server-side webhook verifier. Implements the Hook0 v1
  * signature scheme (Coinbase routes Business Checkout webhooks through Hook0;
@@ -80,7 +81,7 @@ export function createCoinbaseBusinessVerifier(
 
 	return {
 		async verify(rawBody, headers): Promise<WebhookEvent | null> {
-			if (!config.webhookSecret) {
+			if (!config.webhookSecret?.trim()) {
 				throw new Error('coin-moebius/coinbase-business: webhookSecret missing on verifier config');
 			}
 
@@ -222,6 +223,10 @@ function toPaymentResult(bodyString: string): WebhookEvent | null {
 	const status = mapEventType(eventType);
 	if (status === null) return null;
 
+	if (status === 'success') {
+		const local = data.pricing?.local ?? data.local_price ?? data;
+		assertPaymentEvidence(data.checkout_id ?? data.id, local.amount, local.currency);
+	}
 	const { amount, currency } = readAmountAndCurrency(data);
 
 	return {

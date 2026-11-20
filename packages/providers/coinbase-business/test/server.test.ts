@@ -248,6 +248,15 @@ describe('createCoinbaseBusinessVerifier', () => {
 		});
 	}
 
+	it('requires an explicit local currency for the completed checkout', async () => {
+		const fixture = sample();
+		const event = JSON.parse(fixture.body);
+		delete event.event.data.pricing.local.currency;
+		fixture.body = JSON.stringify(event);
+		await expect(makeVerifier().verify(fixture.body, await signedHeaders(fixture))).rejects.toThrow(
+			/currency/,
+		);
+	});
 	it('maps checkout.payment.success to success and surfaces amount + paymentId', async () => {
 		const verifier = makeVerifier();
 		const s = sample('checkout.payment.success');

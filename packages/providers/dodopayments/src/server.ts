@@ -1,3 +1,4 @@
+import { assertPaymentEvidence } from '@aquarian-metals/coin-moebius-core';
 /**
  * Dodo Payments server-side webhook verifier. Dodo signs webhooks with the
  * [Standard Webhooks](https://www.standardwebhooks.com/) scheme (the same
@@ -205,7 +206,7 @@ export function createDodoPaymentsVerifier(config: DodoPaymentsVerifierConfig) {
 		rawBody: unknown,
 		headers?: unknown,
 	): Promise<WebhookEvent | null> {
-		if (!config.webhookSecret) {
+		if (!config.webhookSecret?.trim()) {
 			throw new Error('coin-moebius/dodopayments: webhookSecret missing on verifier config');
 		}
 
@@ -383,6 +384,7 @@ function toPaymentEvent(
 	// Refund payloads carry the refunded `amount`; payment/dispute payloads carry
 	// `total_amount`. Both are minor units.
 	const minor = status === 'refunded' ? (data.amount ?? data.total_amount) : data.total_amount;
+	if (status === 'success') assertPaymentEvidence(data.payment_id, minor, data.currency, true);
 	return {
 		kind: 'payment',
 		status,

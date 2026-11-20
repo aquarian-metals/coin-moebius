@@ -34,15 +34,18 @@ export default async (req) => {
 		return new Response('Method not allowed', { status: 405 });
 	}
 	try {
-		const { productId, metadata } = await req.json();
-		const product = Object.hasOwn(PRODUCTS, productId) ? PRODUCTS[productId] : undefined;
+		const { productId } = await req.json();
+		const product =
+			typeof productId === 'string' && Object.hasOwn(PRODUCTS, productId)
+				? PRODUCTS[productId]
+				: undefined;
 		if (!product) {
 			return new Response(JSON.stringify({ error: 'Unknown product' }), {
 				status: 404,
 				headers: { 'Content-Type': 'application/json' },
 			});
 		}
-		const instructions = await create({ productId, ...product, metadata });
+		const instructions = await create({ productId, ...product });
 		return new Response(JSON.stringify(instructions), {
 			status: 200,
 			headers: { 'Content-Type': 'application/json' },

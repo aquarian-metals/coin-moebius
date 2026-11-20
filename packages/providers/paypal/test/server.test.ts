@@ -519,12 +519,13 @@ describe('event → PaymentResult mapping (REST verifier, by event_type)', () =>
 		expect(result?.paymentId).toBe('CAPTURE_NO_ORDER');
 	});
 
-	it('returns empty paymentId when neither order_id nor resource id is present', async () => {
-		const result = await verify({
-			event_type: 'PAYMENT.CAPTURE.COMPLETED',
-			resource: { amount: { value: '1.00', currency_code: 'USD' } },
-		});
-		expect(result?.paymentId).toBe('');
+	it('rejects a completed capture with no order or resource identifier', async () => {
+		await expect(
+			verify({
+				event_type: 'PAYMENT.CAPTURE.COMPLETED',
+				resource: { amount: { value: '1.00', currency_code: 'USD' } },
+			}),
+		).rejects.toThrow(/identifier/);
 	});
 });
 
@@ -624,7 +625,10 @@ describe('REST verifier — body + config edge cases', () => {
 			webhookId: WEBHOOK_ID,
 			fetcher: setupFetch('SUCCESS'),
 		});
-		const body = { event_type: 'PAYMENT.CAPTURE.COMPLETED', resource: { id: 'R' } };
+		const body = {
+			event_type: 'PAYMENT.CAPTURE.COMPLETED',
+			resource: { id: 'R', amount: { value: '1.00', currency_code: 'USD' } },
+		};
 		const fromString = asPayment(await v.verify(JSON.stringify(body), headers()));
 		const fromBytes = asPayment(
 			await v.verify(new TextEncoder().encode(JSON.stringify(body)), headers()),

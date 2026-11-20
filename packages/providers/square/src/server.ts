@@ -1,3 +1,4 @@
+import { assertPaymentEvidence } from '@aquarian-metals/coin-moebius-core';
 /**
  * Square server-side webhook verifier. Implements Square's HMAC-SHA256
  * signature scheme as documented at
@@ -68,7 +69,7 @@ export interface WebhookVerifier {
 export function createSquareVerifier(config: SquareVerifierConfig): WebhookVerifier {
 	return {
 		async verify(rawBody, headers): Promise<WebhookEvent | null> {
-			if (!config.signatureKey) {
+			if (!config.signatureKey?.trim()) {
 				throw new Error('coin-moebius/square: signatureKey missing on verifier config');
 			}
 			if (!config.notificationUrl) {
@@ -200,6 +201,13 @@ function toPaymentResult(event: SquareWebhookEvent): WebhookEvent | null {
 	const status = mapEvent(eventType, payment, refund);
 	if (status === null) return null;
 
+	if (status === 'success')
+		assertPaymentEvidence(
+			payment?.id,
+			payment?.amount_money?.amount,
+			payment?.amount_money?.currency,
+			true,
+		);
 	const { paymentId, amount, currency } = readDetails(eventType, payment, refund, dispute);
 
 	return {

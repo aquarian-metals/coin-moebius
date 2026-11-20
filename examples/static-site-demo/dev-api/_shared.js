@@ -11,6 +11,7 @@
  * those keys can still poke the Monero flow.
  */
 
+import { randomBytes } from 'node:crypto';
 import { createMemoryStore, createVerifierRegistry } from '@aquarian-metals/coin-moebius-server';
 
 let storeInstance = null;
@@ -37,25 +38,26 @@ export function isMoneroMockEnabled() {
 	return process.env.MONERO_MOCK === 'true';
 }
 
-/**
- * Shared HMAC secret used by the Monero verifier (receiver) and indexer
- * (sender). Reads from env when set; falls back to a fixed dev-only value
- * so `MONERO_MOCK=true` runs out-of-the-box without per-secret setup.
- */
+const localKeys = new Map();
+
+function indexerSecret(name, localMode) {
+	const configured = process.env[name];
+	if (configured?.trim()) return configured;
+	if (!localMode) return undefined;
+	if (!localKeys.has(name)) localKeys.set(name, randomBytes(32).toString('hex'));
+	return localKeys.get(name);
+}
+
 export function getMoneroHmacSecret() {
-	return process.env.MONERO_HMAC_SECRET ?? 'demo-hmac-secret-not-for-production';
+	return indexerSecret('MONERO_HMAC_SECRET', isMoneroMockEnabled());
 }
 
 export function isZanoMockEnabled() {
 	return process.env.ZANO_MOCK === 'true';
 }
 
-/**
- * Shared HMAC secret used by the Zano verifier (receiver) and indexer
- * (sender). Same fallback story as the Monero one above.
- */
 export function getZanoHmacSecret() {
-	return process.env.ZANO_HMAC_SECRET ?? 'demo-zano-hmac-secret-not-for-production';
+	return indexerSecret('ZANO_HMAC_SECRET', isZanoMockEnabled());
 }
 
 /**
@@ -80,12 +82,8 @@ export function getBitcoinRpcConfig() {
 	};
 }
 
-/**
- * Shared HMAC secret used by the Bitcoin verifier (receiver) and indexer
- * (sender). Same fallback story as the Monero one above.
- */
 export function getBitcoinHmacSecret() {
-	return process.env.BITCOIN_HMAC_SECRET ?? 'demo-bitcoin-hmac-secret-not-for-production';
+	return indexerSecret('BITCOIN_HMAC_SECRET', isBitcoinRegtestEnabled());
 }
 
 export function isBitcoinCashRegtestEnabled() {
@@ -127,5 +125,5 @@ export async function bitcoinCashNodeChain(config) {
 }
 
 export function getBitcoinCashHmacSecret() {
-	return process.env.BCH_HMAC_SECRET ?? 'demo-bitcoin-cash-hmac-secret-not-for-production';
+	return indexerSecret('BCH_HMAC_SECRET', isBitcoinCashRegtestEnabled());
 }

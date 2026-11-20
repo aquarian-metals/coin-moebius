@@ -1,3 +1,4 @@
+import { assertPaymentEvidence } from '@aquarian-metals/coin-moebius-core';
 /**
  * Authorize.Net server-side webhook verifier. Implements Authorize.Net's
  * HMAC-SHA512 signature scheme:
@@ -29,7 +30,7 @@
  *   net.authorize.payment.refund.created          → refunded
  *   net.authorize.payment.void.created            → failed
  *   net.authorize.payment.fraud.held              → pending
- *   net.authorize.payment.fraud.approved          → success
+ *   net.authorize.payment.fraud.approved          → pending
  *   net.authorize.payment.fraud.declined          → failed
  *   anything else                                  → null
  */
@@ -43,6 +44,8 @@ export interface AuthorizenetVerifierConfig {
 	 * Security Settings → General Security Settings → API Credentials and Keys.
 	 */
 	signatureKey: string;
+	/** Merchant account currency. Defaults to USD. */
+	currency?: string;
 }
 
 export interface WebhookVerifier {
@@ -55,7 +58,7 @@ export interface WebhookVerifier {
 export function createAuthorizenetVerifier(config: AuthorizenetVerifierConfig): WebhookVerifier {
 	return {
 		async verify(rawBody, headers): Promise<WebhookEvent | null> {
-			if (!config.signatureKey) {
+			if (!config.signatureKey?.trim()) {
 				throw new Error('coin-moebius/authorizenet: signatureKey missing on verifier config');
 			}
 
@@ -79,7 +82,7 @@ export function createAuthorizenetVerifier(config: AuthorizenetVerifierConfig): 
 			} catch {
 				throw new Error('coin-moebius/authorizenet: body is not valid JSON');
 			}
-			return toPaymentResult(parsed);
+			return toPaymentResult(parsed, (config.currency ?? 'USD').toUpperCase());
 		},
 	};
 }
@@ -139,19 +142,30 @@ interface AuthorizenetWebhookPayload {
 	[key: string]: unknown;
 }
 
-function toPaymentResult(envelope: AuthorizenetWebhookPayload): WebhookEvent | null {
+function toPaymentResult(
+	envelope: AuthorizenetWebhookPayload,
+	currency: string,
+): WebhookEvent | null {
 	const eventType = envelope.eventType ?? '';
 
 	// Subscription events take precedence over the one-time payment
 	// mapping. Authorize.Net's ARB events have a distinct subjects, no
 	// overlap with payment event names.
-	const subscriptionEvent = toSubscriptionEvent(envelope, eventType);
+	const mappedStatus = mapEventType(eventType);
+	if (mappedStatus === 'success' && String(envelope.payload?.responseCode) !== '1') return null;
+	const subscriptionEvent = toSubscriptionEvent(envelope, eventType, currency);
 	if (subscriptionEvent) return subscriptionEvent;
 
-	const status = mapEventType(eventType);
+	const status = mappedStatus;
 	if (status === null) return null;
 
 	const payload = envelope.payload ?? {};
+	if (status === 'success')
+		assertPaymentEvidence(
+			payload.id,
+			payload.settleAmount ?? payload.authAmount ?? payload.amount,
+			currency,
+		);
 	const amount = readAmount(payload);
 	return {
 		kind: 'payment',
@@ -159,11 +173,7 @@ function toPaymentResult(envelope: AuthorizenetWebhookPayload): WebhookEvent | n
 		paymentId: typeof payload.id === 'string' ? payload.id : '',
 		provider: 'authorizenet',
 		amount,
-		// Authorize.Net's webhook payloads do not carry currency on the
-		// envelope; merchants configure a single account currency upstream.
-		// USD is the dominant case; consumers needing a different account
-		// currency can override via metadata or by inspecting `raw`.
-		currency: 'USD',
+		currency,
 		metadata: {
 			authorizenetEventType: eventType,
 			authorizenetNotificationId: envelope.notificationId,
@@ -215,6 +225,7 @@ interface AuthorizenetArbPayload {
 function toSubscriptionEvent(
 	envelope: AuthorizenetWebhookPayload,
 	eventType: string,
+	currency: string,
 ): WebhookEvent | null {
 	const payload = (envelope.payload ?? {}) as AuthorizenetArbPayload;
 	const linkedSubscriptionId = payload.subscriptionId;
@@ -284,7 +295,7 @@ function toSubscriptionEvent(
 		currentPeriodEnd: null,
 		status,
 		amount,
-		currency: 'USD',
+		currency,
 		metadata: {
 			authorizenetEventType: eventType,
 			authorizenetNotificationId: envelope.notificationId,
@@ -322,8 +333,9 @@ function mapEventType(eventType: string): PaymentResult['status'] | null {
 		case 'net.authorize.payment.authcapture.created':
 		case 'net.authorize.payment.capture.created':
 		case 'net.authorize.payment.priorAuthCapture.created':
-		case 'net.authorize.payment.fraud.approved':
 			return 'success';
+		case 'net.authorize.payment.fraud.approved':
+			return 'pending';
 		case 'net.authorize.payment.refund.created':
 			return 'refunded';
 		case 'net.authorize.payment.void.created':

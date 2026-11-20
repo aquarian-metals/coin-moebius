@@ -100,28 +100,7 @@ if (sub?.type === 'subscription.renewed') {
 
 ## Identifying buyers without storing them
 
-The SDK normalizes whatever the provider sends. Stripe puts the buyer's email and customer id on subscription events; the SDK passes those through to your handler. What you do with them is up to you. If you want the same data on the SDK's `SubscriptionEvent.customerRef`, it's there. If you'd rather identify buyers by your own opaque user id without holding the provider's, pass your own identifier as `customer-ref` when the buy element initiates checkout — the element forwards it as `metadata.customerRef` on the checkout request:
-
-```html
-<coin-moebius-buy
-  endpoint="https://your-backend.example.com"
-  project-id="proj_YOUR_ID"
-  product-id="pro-plan"
-  customer-ref="user_bob_42"
-></coin-moebius-buy>
-```
-
-Or, if you're calling the SDK directly:
-
-```typescript
-payments.initiate({
-  productId: 'pro-plan',
-  providerId: 'stripe',
-  metadata: { customerRef: 'user_bob_42' },
-});
-```
-
-That opaque string is what you use to identify Bob in your own system. The SDK passes it to the provider as subscription metadata, and the provider returns it on every webhook event. Your `verify()` handler reads it back from `event.metadata.customerRef`. To the SDK it's a string with no meaning; to your application it's the foreign key into your user database. The two only meet at that one identifier.
+When your server creates a subscription checkout, obtain the buyer ID from the authenticated session and save the provider's subscription or checkout ID with that buyer's order. If the integration uses provider metadata, write the buyer reference server-side. Browser-supplied metadata, including `customer-ref`, is a display hint. Grant access to the account tied to the saved order after checking the verified event against the merchant's subscription and trial policy.
 
 For deep buyer detail (email, card last-four, dispute history), drill into the provider's own dashboard. The provider holds the customer record; the SDK doesn't try to mirror it.
 

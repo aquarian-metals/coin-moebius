@@ -1,3 +1,4 @@
+import { assertPaymentEvidence } from '@aquarian-metals/coin-moebius-core';
 /**
  * MakePay server-side webhook verifier.
  *
@@ -73,7 +74,7 @@ export function createMakepayVerifier(
 		rawBody: unknown,
 		headers?: unknown,
 	): Promise<WebhookEvent | null> {
-		if (!config.webhookSecret) {
+		if (!config.webhookSecret?.trim()) {
 			throw new Error('coin-moebius/makepay: webhookSecret missing on verifier config');
 		}
 
@@ -255,10 +256,18 @@ function toPaymentEvent(payload: MakepayWebhookPayload, deliveryId?: string): We
 	const session = payload.session ?? {};
 	const eventType = typeof payload.event?.type === 'string' ? payload.event.type : undefined;
 	const sessionStatus = typeof session.status === 'string' ? session.status : undefined;
+	const status = mapMakepaySessionStatus(sessionStatus, eventType);
+	const paymentId = stringField(pl.uid) ?? stringField(pl.id) ?? stringField(session.id) ?? '';
+	if (status === 'success')
+		assertPaymentEvidence(
+			paymentId,
+			pl.amount ?? session.invoiceAmount,
+			pl.currency ?? session.invoiceAsset,
+		);
 	return {
 		kind: 'payment',
-		status: mapMakepaySessionStatus(sessionStatus, eventType),
-		paymentId: stringField(pl.uid) ?? stringField(pl.id) ?? stringField(session.id) ?? '',
+		status,
+		paymentId,
 		provider: 'makepay',
 		amount: numberField(pl.amount ?? session.invoiceAmount),
 		currency: (stringField(pl.currency) ?? stringField(session.invoiceAsset) ?? '').toUpperCase(),
@@ -337,7 +346,6 @@ export function mapMakepaySessionStatus(
 	sessionStatus: string | undefined,
 	eventType?: string,
 ): PaymentResult['status'] {
-	if (sessionStatus?.toLowerCase() === 'complete') return 'success';
 	switch (eventType) {
 		case 'payment_request_expired':
 		case 'quote_expired':
@@ -345,6 +353,8 @@ export function mapMakepaySessionStatus(
 			return 'failed';
 	}
 	switch (sessionStatus?.toLowerCase()) {
+		case 'complete':
+			return 'success';
 		case 'expired':
 		case 'cancelled':
 		case 'canceled':

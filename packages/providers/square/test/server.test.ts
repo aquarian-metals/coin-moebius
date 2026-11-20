@@ -136,6 +136,10 @@ describe('createSquareVerifier', () => {
 		});
 	}
 
+	it('rejects fractional minor units on a completed payment', async () => {
+		const body = event({ amount: 9.99 });
+		await expect(makeVerifier().verify(body, await signedHeaders(body))).rejects.toThrow(/amount/);
+	});
 	it('maps payment.updated with status COMPLETED to success', async () => {
 		const verifier = makeVerifier();
 		const body = event({ paymentStatus: 'COMPLETED' });

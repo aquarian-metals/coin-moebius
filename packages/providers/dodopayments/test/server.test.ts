@@ -349,22 +349,18 @@ describe('createDodoPaymentsVerifier — verification failures', () => {
 describe('createDodoPaymentsVerifier — field fallbacks', () => {
 	const verify = createDodoPaymentsVerifier({ webhookSecret: WEBHOOK_SECRET });
 
-	it('defaults missing currency to USD and missing amount/metadata to safe values', async () => {
+	it('rejects success without invoice currency or amount', async () => {
 		const { body, headers } = await signedDelivery(
 			paymentPayload({ currency: undefined, total_amount: undefined, metadata: undefined }),
 		);
-		const event = asPayment(await verify(body, headers));
-		expect(event?.currency).toBe('USD');
-		expect(event?.amount).toBe(0);
-		expect(event?.metadata.orderRef).toBeUndefined();
+		await expect(verify(body, headers)).rejects.toThrow(/currency|amount/);
 	});
 
-	it('falls back from payment_id to subscription_id to empty string', async () => {
+	it('rejects success without the payment identifier', async () => {
 		const { body, headers } = await signedDelivery(
 			paymentPayload({ payment_id: undefined, subscription_id: undefined }),
 		);
-		const event = asPayment(await verify(body, headers));
-		expect(event?.paymentId).toBe('');
+		await expect(verify(body, headers)).rejects.toThrow(/identifier/);
 	});
 
 	it('uses the refund total_amount fallback when the refund amount is absent', async () => {

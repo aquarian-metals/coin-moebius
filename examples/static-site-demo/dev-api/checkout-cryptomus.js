@@ -1,3 +1,4 @@
+import { usdProduct } from './catalog.js';
 /**
  * `POST /api/checkout/cryptomus` — create a Cryptomus invoice and
  * return `{ uuid, address, qr, amount }` for the browser provider.
@@ -43,22 +44,18 @@ export async function handleCryptomusCheckout(req, res) {
 		return;
 	}
 
-	const body = await readJson(req);
-	const result = await create({
-		productId: String(body.productId ?? 'demo'),
-		amount: Number(body.amount),
-		currency: String(body.currency ?? 'USD'),
-		metadata: body.metadata ?? {},
-	});
+	const product = usdProduct(await readJson(req), res);
+	if (!product) return;
+	const result = await create(product);
 
 	await getStore().upsert({
 		status: 'pending',
 		paymentId: result.uuid,
 		provider: 'cryptomus',
-		amount: Number(body.amount),
-		currency: String(body.currency ?? 'USD'),
+		amount: product.amount,
+		currency: product.currency,
 		metadata: {
-			...(body.metadata ?? {}),
+			productId: product.productId,
 			address: result.address,
 			qr: result.qr,
 			cryptomusAmount: result.amount,

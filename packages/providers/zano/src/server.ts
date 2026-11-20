@@ -422,7 +422,7 @@ async function resolveAsset(rpc: WalletRpc, assetId: string | undefined): Promis
  * `x-zano-sig` header.
  */
 export function createZanoVerifier(config: ZanoVerifierConfig): ZanoVerifier {
-	if (!config.hmacSecret) {
+	if (!config.hmacSecret?.trim()) {
 		throw new Error('coin-moebius/zano: hmacSecret missing on verifier config');
 	}
 
@@ -506,7 +506,7 @@ export function createZanoVerifier(config: ZanoVerifierConfig): ZanoVerifier {
  *   process.on('SIGTERM', stop);
  */
 export function createZanoIndexer(config: ZanoIndexerConfig): ZanoIndexer {
-	if (!config.hmacSecret) {
+	if (!config.hmacSecret?.trim()) {
 		throw new Error('coin-moebius/zano: hmacSecret missing on indexer config');
 	}
 

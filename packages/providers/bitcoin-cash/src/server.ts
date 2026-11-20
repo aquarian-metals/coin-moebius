@@ -193,7 +193,7 @@ export function createBitcoinCashCreator(config: BitcoinCashCreatorConfig) {
 }
 
 export function createBitcoinCashVerifier(config: BitcoinCashVerifierConfig): BitcoinCashVerifier {
-	if (!config.hmacSecret) {
+	if (!config.hmacSecret?.trim()) {
 		throw new Error('coin-moebius/bitcoin-cash: hmacSecret missing on verifier config');
 	}
 
@@ -245,7 +245,7 @@ export function createBitcoinCashVerifier(config: BitcoinCashVerifierConfig): Bi
 }
 
 export function createBitcoinCashIndexer(config: BitcoinCashIndexerConfig): BitcoinCashIndexer {
-	if (!config.hmacSecret) {
+	if (!config.hmacSecret?.trim()) {
 		throw new Error('coin-moebius/bitcoin-cash: hmacSecret missing on indexer config');
 	}
 

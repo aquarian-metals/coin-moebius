@@ -1,3 +1,4 @@
+import { assertPaymentEvidence } from '@aquarian-metals/coin-moebius-core';
 /**
  * NOWPayments server-side IPN verifier. Implements the signature scheme
  * documented at <https://nowpayments.zendesk.com/hc/en-us/articles/21395546303389>:
@@ -69,7 +70,7 @@ export interface NowPaymentsIpnPayload {
 export function createNowPaymentsVerifier(config: NowPaymentsVerifierConfig): WebhookVerifier {
 	return {
 		async verify(rawBody, headers): Promise<WebhookEvent> {
-			if (!config.ipnSecret) {
+			if (!config.ipnSecret?.trim()) {
 				throw new Error('coin-moebius/nowpayments: ipnSecret missing on verifier config');
 			}
 
@@ -162,26 +163,33 @@ function sortObjectRecursive(value: unknown): unknown {
  */
 function toWebhookEvent(payload: NowPaymentsIpnPayload): WebhookEvent {
 	const status = payload.payment_status;
-	const mapped: PaymentResult['status'] = mapPaymentStatus(status);
-	// For partial payments, prefer `actually_paid` (what we received on chain)
-	// over `price_amount` (what we asked for). Consumers compare the two via
-	// metadata to detect underpayments.
-	const amount =
-		mapped === 'partial' && typeof payload.actually_paid === 'number'
-			? payload.actually_paid
-			: payload.price_amount;
+	let mapped = mapPaymentStatus(status);
+	const id = payload.payment_id ?? payload.order_id;
+	const paymentId = typeof id === 'number' && Number.isSafeInteger(id) ? String(id) : id;
+	if (mapped === 'success' || mapped === 'partial') {
+		assertPaymentEvidence(paymentId, payload.actually_paid, payload.pay_currency);
+		if (mapped === 'success') {
+			assertPaymentEvidence(paymentId, payload.price_amount, payload.price_currency);
+			assertPaymentEvidence(paymentId, payload.pay_amount, payload.pay_currency);
+			if (Number(payload.pay_amount) <= 0) throw new Error('Invalid quoted pay amount');
+			if (Number(payload.actually_paid) < Number(payload.pay_amount)) mapped = 'partial';
+		}
+	}
+	const amount = mapped === 'partial' ? Number(payload.actually_paid) : payload.price_amount;
+	const currency = mapped === 'partial' ? payload.pay_currency! : payload.price_currency;
 	return {
 		kind: 'payment',
 		status: mapped,
-		paymentId: String(payload.payment_id ?? payload.order_id),
+		paymentId: String(id),
 		provider: 'nowpayments',
-		amount,
-		currency: payload.price_currency.toUpperCase(),
+		amount: Number(amount),
+		currency: currency.toUpperCase(),
 		metadata: {
 			orderId: payload.order_id,
 			payCurrency: payload.pay_currency,
 			actuallyPaid: payload.actually_paid,
 			invoicedAmount: payload.price_amount,
+			invoicedCurrency: payload.price_currency,
 			network: payload.network,
 			nowpaymentsStatus: status,
 		},

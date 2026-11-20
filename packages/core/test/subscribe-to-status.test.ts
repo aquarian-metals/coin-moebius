@@ -86,6 +86,21 @@ describe('manager.subscribeToStatus', () => {
 		expect(fetchMock.mock.calls.length).toBe(callsAtSuccess);
 	});
 
+	it('keeps polling when the endpoint returns another payment', async () => {
+		vi.spyOn(globalThis, 'fetch')
+			.mockResolvedValueOnce(Response.json({ ...successResult(), paymentId: 'other' }))
+			.mockResolvedValueOnce(Response.json(successResult()));
+		const onSuccess = vi.fn();
+		buildManager().subscribeToStatus(
+			'p1',
+			{ statusEndpoint: '/api/status', onSuccess },
+			{ pollIntervalMs: 1000 },
+		);
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(onSuccess).not.toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(onSuccess).toHaveBeenCalledOnce();
+	});
 	it('calls onTimeout once timeoutMs elapses', async () => {
 		vi.spyOn(globalThis, 'fetch').mockResolvedValue(
 			new Response(JSON.stringify(pendingResult()), { status: 200 }),
@@ -158,4 +173,33 @@ describe('manager.subscribeToStatus', () => {
 		await vi.advanceTimersByTimeAsync(5000);
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
+});
+
+it('expires while the status request is still outstanding', async () => {
+	vi.useFakeTimers();
+	try {
+		let finish!: (response: Response) => void;
+		const fetcher = vi.spyOn(globalThis, 'fetch').mockImplementation(
+			() =>
+				new Promise((resolve) => {
+					finish = resolve;
+				}),
+		);
+		const onTimeout = vi.fn();
+		const onSuccess = vi.fn();
+		createPaymentManager({ providers: [] }).subscribeToStatus(
+			'p1',
+			{ statusEndpoint: '/status', onTimeout, onSuccess },
+			{ pollIntervalMs: 10, timeoutMs: 100 },
+		);
+		await vi.advanceTimersByTimeAsync(100);
+		expect(onTimeout).toHaveBeenCalledOnce();
+		expect(fetcher.mock.calls[0][1]?.signal?.aborted).toBe(true);
+		finish(Response.json(successResult()));
+		await vi.advanceTimersByTimeAsync(100);
+		expect(onSuccess).not.toHaveBeenCalled();
+	} finally {
+		vi.useRealTimers();
+		vi.restoreAllMocks();
+	}
 });

@@ -141,3 +141,13 @@ describe('createMemoryStore', () => {
 		});
 	});
 });
+
+it('releases only the failed notification claim for retry', async () => {
+	const store = createMemoryStore();
+	await store.markStatusAnnounced!('order', 'pending');
+	await store.markStatusAnnounced!('order', 'success');
+	await store.unmarkStatusAnnounced!('order', 'success');
+	expect(await store.markStatusAnnounced!('order', 'pending')).toBe(false);
+	expect(await store.markStatusAnnounced!('order', 'success')).toBe(true);
+	expect(await store.markStatusAnnounced!('order', 'success')).toBe(false);
+});
