@@ -220,7 +220,7 @@ function defaultRenderModal(
 			<div><strong>Reference:</strong> ${escapeHtml(instructions.referenceCode)}</div>
 			<div style="margin-top:8px;"><strong>Mail to:</strong></div>
 			<div style="white-space:pre-line;">${escapeHtml(instructions.mailingAddress)}</div>
-			<div style="margin-top:8px;"><strong>Amount:</strong> ${instructions.expectedAmount} ${escapeHtml(instructions.expectedCurrency)}</div>
+			<div style="margin-top:8px;"><strong>Amount:</strong> ${escapeHtml(String(instructions.expectedAmount))} ${escapeHtml(instructions.expectedCurrency)}</div>
 		</div>
 		<div style="display:flex;gap:8px;justify-content:flex-end;">
 			<button type="button" data-action="cancel" style="padding:8px 16px;border:1px solid #ddd;background:#fff;border-radius:4px;cursor:pointer;font:inherit;">Cancel</button>

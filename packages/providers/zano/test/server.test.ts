@@ -115,6 +115,8 @@ function makeWallet() {
 					transfers: ordered.slice(offset, offset + count),
 				};
 			}
+			case 'search_for_transactions2':
+				return { in: state.transfers.filter((tx) => tx.tx_hash === params.tx_id) };
 			case 'get_payments': {
 				const wanted = typeof params.payment_id === 'string' ? params.payment_id : '';
 				const payments: Record<string, unknown>[] = [];
@@ -730,6 +732,20 @@ describe('createZanoVerifier', () => {
 });
 
 describe('createZanoIndexer', () => {
+	it('refuses a confirmation setting below 1, which would count unconfirmed payments as paid', () => {
+		for (const requiredConfirmations of [0, -1, 1.5, Number.NaN]) {
+			expect(() =>
+				createZanoIndexer({
+					walletRpcUrl: WALLET_URL,
+					store: {} as PaymentStore,
+					webhookUrl: WEBHOOK_URL,
+					hmacSecret: SECRET,
+					requiredConfirmations,
+				}),
+			).toThrow('requiredConfirmations must be a whole number of at least 1');
+		}
+	});
+
 	async function setup(opts: { now?: () => number; rate?: () => Promise<number> } = {}) {
 		const wallet = makeWallet();
 		const store = createMemoryStore();
@@ -1149,6 +1165,29 @@ describe('createZanoIndexer', () => {
 		expect(result.errors.length).toBeGreaterThan(0);
 		expect(indexer.status().webhookErrorCount).toBe(1);
 		expect(indexer.status().lastError?.message).toContain('webhook responded 500');
+	});
+
+	it('tick(): carries the reason the receiver gave for refusing the webhook', async () => {
+		const ctx = await setup();
+		ctx.pay(ctx.zanoInvoice, { amount: 100_000_000_000 });
+		const indexer = createZanoIndexer({
+			walletRpcUrl: WALLET_URL,
+			store: ctx.store,
+			webhookUrl: WEBHOOK_URL,
+			hmacSecret: SECRET,
+			fetcher: withWebhookCapture(ctx.wallet.fetcher, ctx.webhookCalls, () =>
+				Response.json(
+					{ error: { code: 'SIGNATURE_VERIFICATION_FAILED', message: 'bad signature' } },
+					{ status: 400 },
+				),
+			),
+			webhookRetry: { maxAttempts: 1, initialBackoffMs: 1 },
+		});
+
+		await indexer.tick();
+		expect(indexer.status().lastError?.message).toContain(
+			'webhook responded 400 (SIGNATURE_VERIFICATION_FAILED)',
+		);
 	});
 
 	it('tick(): records lastError when wallet RPC itself fails', async () => {
@@ -1721,6 +1760,31 @@ describe('adversarial review findings', () => {
 		expect(ctx.payloads().at(-1)?.status).toBe('success');
 		expect(ctx.payloads().at(-1)?.receivedAmountAtomic).toBe('100000000000');
 		expect((await ctx.store.get(ctx.invoice.paymentId))?.status).toBe('success');
+	});
+
+	it('settles a split payment whose first part is older than the history it reads', async () => {
+		const ctx = await shop({ pageSize: 1 });
+		const tip = ctx.wallet.state.height;
+		ctx.pay(ctx.invoice.paymentReference, 40_000_000_000, tip - 1000, 'first');
+		ctx.pay('0000000000000000', 1, tip - 100, 'someone-else');
+		ctx.pay(ctx.invoice.paymentReference, 60_000_000_000, tip - 10, 'rest');
+
+		await ctx.indexer.tick();
+		expect(ctx.payloads().at(-1)?.status).toBe('success');
+		expect(ctx.payloads().at(-1)?.receivedAmountAtomic).toBe('100000000000');
+		expect((await ctx.store.get(ctx.invoice.paymentId))?.status).toBe('success');
+	});
+
+	it('still calls a split payment partial when the older part does not cover the rest', async () => {
+		const ctx = await shop({ pageSize: 1 });
+		const tip = ctx.wallet.state.height;
+		ctx.pay(ctx.invoice.paymentReference, 20_000_000_000, tip - 1000, 'first');
+		ctx.pay('0000000000000000', 1, tip - 100, 'someone-else');
+		ctx.pay(ctx.invoice.paymentReference, 60_000_000_000, tip - 10, 'rest');
+
+		await ctx.indexer.tick();
+		expect(ctx.payloads().at(-1)?.status).toBe('partial');
+		expect(ctx.payloads().at(-1)?.receivedAmountAtomic).toBe('80000000000');
 	});
 
 	it('gives up on a wallet that never answers instead of stalling the tick', async () => {

@@ -149,6 +149,30 @@ describe('createBitcoinProvider', () => {
 		expect((onError.mock.calls[0][0] as Error).message).toContain('missing required fields');
 	});
 
+	it('refuses a wallet link that pays another address or asks another amount than the one shown', async () => {
+		const errorFor = async (uri: string) => {
+			const onError = vi.fn();
+			const provider = createBitcoinProvider({
+				fetcher: okFetch(sampleInstructions({ uri })),
+				renderModal: () => () => undefined,
+			});
+			await provider.initiate(
+				{ productId: 'p', amount: 0.001, currency: 'BTC' },
+				{ onSuccess: () => undefined, onError },
+			);
+			return (onError.mock.calls[0]?.[0] as Error | undefined)?.message ?? '';
+		};
+		expect(await errorFor('bitcoin:bc1qsomeoneelse?amount=0.0001999')).toContain('does not match');
+		expect(await errorFor(`bitcoin:${ADDRESS}?amount=5`)).toContain('does not match');
+		expect(await errorFor(`bitcoin:${ADDRESS}?amount=0.0001999&amount=5`)).toContain(
+			'does not match',
+		);
+		expect(await errorFor(`bitcoin:${ADDRESS}?amount=0.0001999&req-pay=x`)).toContain(
+			'does not match',
+		);
+		expect(await errorFor(`bitcoin:${ADDRESS}?amount=0.0001999`)).toBe('');
+	});
+
 	it('calls onError when the wallet link is not a bitcoin: link', async () => {
 		const fetchStub = okFetch(sampleInstructions({ uri: 'https://evil.example/pay' }));
 		const onError = vi.fn();
@@ -198,7 +222,13 @@ describe('createBitcoinProvider', () => {
 
 	it('prints the amount from satoshis, never from the float beside it', async () => {
 		const provider = createBitcoinProvider({
-			fetcher: okFetch(sampleInstructions({ atomicAmount: '1', btcAmount: 1e-8 })),
+			fetcher: okFetch(
+				sampleInstructions({
+					atomicAmount: '1',
+					btcAmount: 1e-8,
+					uri: `bitcoin:${ADDRESS}?amount=0.00000001`,
+				}),
+			),
 		});
 
 		await provider.initiate({ productId: 'p', amount: 1, currency: 'USD' }, noCallbacks);

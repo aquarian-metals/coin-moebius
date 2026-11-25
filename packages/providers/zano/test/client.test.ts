@@ -102,7 +102,14 @@ describe('createZanoProvider', () => {
 
 	it('sends the pinned assetId and reports under its own id for a second asset', async () => {
 		const fetchStub = okFetch(
-			sampleInstructions({ assetId: FREEDOM_DOLLAR_ASSET_ID, ticker: 'fUSD', decimalPoint: 4 }),
+			sampleInstructions({
+				assetId: FREEDOM_DOLLAR_ASSET_ID,
+				ticker: 'fUSD',
+				decimalPoint: 4,
+				assetAmount: 19.99,
+				atomicAmount: '199900',
+				uri: `zano:action=send&address=${ADDRESS}&amount=19.99&asset_id=${FREEDOM_DOLLAR_ASSET_ID}`,
+			}),
 		);
 		const onPending = vi.fn();
 		const provider = createZanoProvider({
@@ -162,6 +169,32 @@ describe('createZanoProvider', () => {
 		expect((onError.mock.calls[0][0] as Error).message).toContain('missing required fields');
 	});
 
+	it('refuses a wallet link that pays another address, amount or asset than the one shown', async () => {
+		const errorFor = async (uri: string) => {
+			const onError = vi.fn();
+			const provider = createZanoProvider({
+				fetcher: okFetch(sampleInstructions({ uri })),
+				renderModal: () => () => undefined,
+			});
+			await provider.initiate(
+				{ productId: 'p', amount: 0.1, currency: 'ZANO' },
+				{ onSuccess: () => undefined, onError },
+			);
+			return (onError.mock.calls[0]?.[0] as Error | undefined)?.message ?? '';
+		};
+		const link = (address: string, amount: string, asset: string) =>
+			`zano:action=send&address=${address}&amount=${amount}&asset_id=${asset}`;
+		expect(await errorFor(link('iZsomeoneelse', '0.1', ZANO_ASSET_ID))).toContain('does not match');
+		expect(await errorFor(link(ADDRESS, '5', ZANO_ASSET_ID))).toContain('does not match');
+		expect(await errorFor(link(ADDRESS, '0.1', FREEDOM_DOLLAR_ASSET_ID))).toContain(
+			'does not match',
+		);
+		expect(
+			await errorFor(`${link(ADDRESS, '0.1', ZANO_ASSET_ID)}&address=iZsomeoneelse`),
+		).toContain('does not match');
+		expect(await errorFor(link(ADDRESS, '0.1', ZANO_ASSET_ID))).toBe('');
+	});
+
 	it('calls onError when the wallet link is not a zano: link', async () => {
 		const fetchStub = okFetch(sampleInstructions({ uri: 'https://evil.example/pay' }));
 		const onError = vi.fn();
@@ -194,6 +227,7 @@ describe('createZanoProvider', () => {
 				decimalPoint: 4,
 				assetAmount: 19.99,
 				atomicAmount: '199900',
+				uri: `zano:action=send&address=${ADDRESS}&amount=19.99&asset_id=${FREEDOM_DOLLAR_ASSET_ID}`,
 			}),
 		);
 		const provider = createZanoProvider({

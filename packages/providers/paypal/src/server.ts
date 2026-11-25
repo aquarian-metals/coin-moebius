@@ -454,6 +454,11 @@ interface PaypalAmount {
 	currency_code?: string;
 }
 
+interface PaypalSaleAmount {
+	total?: string;
+	currency?: string;
+}
+
 interface PaypalDisputeAmount {
 	value?: string;
 	currency_code?: string;
@@ -469,6 +474,9 @@ interface PaypalSupplementaryData {
 
 interface PaypalResource {
 	id?: string;
+	dispute_id?: string;
+	links?: { rel?: string; href?: string }[];
+	disputed_transactions?: { seller_transaction_id?: string }[];
 	amount?: PaypalAmount;
 	dispute_amount?: PaypalDisputeAmount;
 	purchase_units?: { amount?: PaypalAmount }[];
@@ -519,6 +527,7 @@ function toPaymentResult(event: Record<string, unknown>): WebhookEvent | null {
 		metadata: {
 			paypalEventType: eventType,
 			paypalResourceId: typeof resource.id === 'string' ? resource.id : undefined,
+			paypalCaptureId: readReversedCaptureId(resource),
 		},
 		timestamp: Date.now(),
 		raw: event,
@@ -649,6 +658,7 @@ function mapSubscriptionStatus(
 	if (eventType === 'BILLING.SUBSCRIPTION.CANCELLED') return 'canceled';
 	if (eventType === 'BILLING.SUBSCRIPTION.PAYMENT.FAILED') return 'past_due';
 	if (eventType === 'BILLING.SUBSCRIPTION.SUSPENDED') return 'paused';
+	if (eventType === 'PAYMENT.SALE.COMPLETED') return 'active';
 	switch (rawStatus) {
 		case 'ACTIVE':
 		case 'APPROVED':
@@ -664,15 +674,14 @@ function mapSubscriptionStatus(
 }
 
 function readSubscriptionAmount(
-	resource: PaypalSubscriptionResource & { amount?: PaypalAmount },
+	resource: PaypalSubscriptionResource & { amount?: PaypalAmount & PaypalSaleAmount },
 	isSaleForSubscription: boolean,
 ): { amount: number; currency: string } {
-	const amountField = isSaleForSubscription
-		? resource.amount
-		: resource.billing_info?.last_payment?.amount;
-	const value = amountField?.value;
+	const sale = isSaleForSubscription ? resource.amount : undefined;
+	const amountField = sale ?? resource.billing_info?.last_payment?.amount;
+	const value = sale?.total ?? amountField?.value;
 	const amount = typeof value === 'string' ? Number.parseFloat(value) : 0;
-	const currency = (amountField?.currency_code ?? 'USD').toUpperCase();
+	const currency = (sale?.currency ?? amountField?.currency_code ?? 'USD').toUpperCase();
 	return { amount: Number.isFinite(amount) ? amount : 0, currency };
 }
 
@@ -725,7 +734,23 @@ function readPaymentId(resource: PaypalResource): string {
 	const orderId = resource.supplementary_data?.related_ids?.order_id;
 	if (typeof orderId === 'string' && orderId.length > 0) return orderId;
 	if (typeof resource.id === 'string') return resource.id;
+	if (typeof resource.dispute_id === 'string') return resource.dispute_id;
 	return '';
+}
+
+const CAPTURE_LINK = /\/v2\/payments\/captures\/([A-Za-z0-9-]+)$/;
+
+function readReversedCaptureId(resource: PaypalResource): string | undefined {
+	for (const link of Array.isArray(resource.links) ? resource.links : []) {
+		if (link?.rel !== 'up' || typeof link.href !== 'string') continue;
+		const match = CAPTURE_LINK.exec(link.href);
+		if (match) return match[1];
+	}
+	const disputed = Array.isArray(resource.disputed_transactions)
+		? resource.disputed_transactions
+		: [];
+	const sellerId = disputed[0]?.seller_transaction_id;
+	return typeof sellerId === 'string' && sellerId.length > 0 ? sellerId : undefined;
 }
 
 // --- crypto + encoding helpers --------------------------------------------

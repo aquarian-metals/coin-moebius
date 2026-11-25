@@ -865,6 +865,52 @@ describe('createMoneroIndexer', () => {
 		expect(indexer.status().webhookErrorCount).toBe(0);
 	});
 
+	it('tick(): carries the reason the receiver gave for refusing the webhook', async () => {
+		const ctx = await setupTwoPayments();
+		const fetcher: typeof fetch = (input, init) => {
+			if (urlOf(input) === WEBHOOK_URL) {
+				return Promise.resolve(
+					Response.json(
+						{ error: { code: 'SIGNATURE_VERIFICATION_FAILED', message: 'bad signature' } },
+						{ status: 400 },
+					),
+				);
+			}
+			return withWalletHandlers(ctx.indexerFetcher, {
+				get_height: () => ({ height: 3_000_010 }),
+				get_transfers: () => ({
+					in: [
+						{
+							txid: 'tx_abc',
+							amount: 100_000_000_000,
+							confirmations: 10,
+							height: 3_000_000,
+							subaddr_index: { major: 0, minor: 0 },
+						},
+					],
+				}),
+				get_address: () => ({
+					addresses: [{ address: '8addr_0', address_index: 0, label: ctx.payment1.paymentId }],
+				}),
+			})(input, init);
+		};
+
+		const indexer = createMoneroIndexer({
+			walletRpcUrl: WALLET_URL,
+			store: ctx.store,
+			webhookUrl: WEBHOOK_URL,
+			hmacSecret: SECRET,
+			requiredConfirmations: 10,
+			fetcher,
+			webhookRetry: { maxAttempts: 1, initialBackoffMs: 1 },
+		});
+
+		await indexer.tick();
+		expect(indexer.status().lastError?.message).toContain(
+			'webhook responded 400 (SIGNATURE_VERIFICATION_FAILED)',
+		);
+	});
+
 	it('tick(): increments webhookErrorCount when all retries are exhausted', async () => {
 		const ctx = await setupTwoPayments();
 		const fetcher: typeof fetch = (input, init) => {
@@ -1318,6 +1364,25 @@ describe('adversarial review findings', () => {
 		expect(ctx.payloads().at(-1)?.status).toBe('success');
 		expect(ctx.payloads().at(-1)?.receivedAmountAtomic).toBe('100000000000');
 		expect((await ctx.store.get(ctx.invoice.paymentId))?.status).toBe('success');
+	});
+
+	it('settles a split payment whose first part is older than the history it reads', async () => {
+		const ctx = await shop();
+		ctx.pay('40000000000', 1000, 'first');
+		ctx.pay('60000000000', 10, 'rest');
+		await ctx.indexer.tick();
+		expect(ctx.payloads().at(-1)?.status).toBe('success');
+		expect(ctx.payloads().at(-1)?.receivedAmountAtomic).toBe('100000000000');
+		expect((await ctx.store.get(ctx.invoice.paymentId))?.status).toBe('success');
+	});
+
+	it('still calls a split payment partial when the older part does not cover the rest', async () => {
+		const ctx = await shop();
+		ctx.pay('20000000000', 1000, 'first');
+		ctx.pay('60000000000', 10, 'rest');
+		await ctx.indexer.tick();
+		expect(ctx.payloads().at(-1)?.status).toBe('partial');
+		expect(ctx.payloads().at(-1)?.receivedAmountAtomic).toBe('80000000000');
 	});
 
 	it('gives up on a wallet that never answers instead of stalling the tick', async () => {

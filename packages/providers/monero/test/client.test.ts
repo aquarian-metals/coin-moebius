@@ -16,7 +16,7 @@ function sampleInstructions(overrides: Partial<MoneroInstructions> = {}): Monero
 		address: '8AVAR4iVqEKZApGAMRpMNNDg9wnH2ANEvgyKBcGcqWy',
 		atomicAmount: '100000000000',
 		xmrAmount: 0.1,
-		uri: 'monero:8AVAR...?tx_amount=0.1',
+		uri: 'monero:8AVAR4iVqEKZApGAMRpMNNDg9wnH2ANEvgyKBcGcqWy?tx_amount=0.1',
 		expiresAt: 1_700_000_900_000,
 		...overrides,
 	};
@@ -141,6 +141,56 @@ describe('createMoneroProvider', () => {
 		expect(onError).toHaveBeenCalledOnce();
 		const err = onError.mock.calls[0][0] as Error;
 		expect(err.message).toContain('missing required fields');
+	});
+
+	it('refuses a wallet link that pays another address or asks another amount than the one shown', async () => {
+		const errorFor = async (overrides: Record<string, unknown>) => {
+			const onError = vi.fn();
+			const provider = createMoneroProvider({
+				fetcher: vi.fn(
+					async () =>
+						new Response(JSON.stringify({ ...sampleInstructions(), ...overrides }), {
+							status: 200,
+						}),
+				),
+				renderModal: () => () => undefined,
+			});
+			await provider.initiate(
+				{ productId: 'p', amount: 0.1, currency: 'XMR' },
+				{ onSuccess: () => undefined, onError },
+			);
+			return (onError.mock.calls[0]?.[0] as Error | undefined)?.message ?? '';
+		};
+		const address = sampleInstructions().address;
+		expect(await errorFor({ uri: 'monero:4someoneelse?tx_amount=0.1' })).toContain(
+			'does not match',
+		);
+		expect(await errorFor({ uri: `monero:${address}?tx_amount=5` })).toContain('does not match');
+		expect(await errorFor({ uri: `monero:${address}?tx_amount=0.1&tx_amount=5` })).toContain(
+			'does not match',
+		);
+		expect(await errorFor({ uri: `monero:${address}?tx_amount=0.1` })).toBe('');
+	});
+
+	it('puts an amount the endpoint sent as markup on the page as text', async () => {
+		const provider = createMoneroProvider({
+			fetcher: vi.fn(
+				async () =>
+					new Response(
+						JSON.stringify({
+							...sampleInstructions(),
+							xmrAmount: '<img src=x onerror=alert(1)>',
+							uri: `monero:${sampleInstructions().address}`,
+						}),
+						{ status: 200 },
+					),
+			),
+		});
+		await provider.initiate(
+			{ productId: 'p', amount: 0.1, currency: 'XMR' },
+			{ onSuccess: () => undefined, onError: vi.fn() },
+		);
+		expect(document.querySelector('img')).toBeNull();
 	});
 
 	it('renders a default modal containing the address and amount when no renderer is provided', async () => {

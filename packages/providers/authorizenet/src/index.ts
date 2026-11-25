@@ -49,6 +49,19 @@ interface SessionResponse {
 	paymentId?: string;
 }
 
+const ACCEPT_HOSTED_URLS = new Set([
+	'https://accept.authorize.net/payment/payment',
+	'https://test.authorize.net/payment/payment',
+]);
+
+function assertAcceptHostedUrl(url: string): void {
+	if (!ACCEPT_HOSTED_URLS.has(url)) {
+		throw new Error(
+			'coin-moebius/authorizenet: form address is not allowed (expected the Accept Hosted payment page)',
+		);
+	}
+}
+
 function defaultSubmitForm(action: string, fields: Record<string, string>): void {
 	const form = document.createElement('form');
 	form.method = 'POST';
@@ -110,6 +123,7 @@ export function createAuthorizenetProvider(config: AuthorizenetProviderConfig): 
 					metadata: options.metadata ?? {},
 					timestamp: Date.now(),
 				};
+				assertAcceptHostedUrl(payload.url);
 				callbacks.onPending?.(result);
 				submitForm(payload.url, { token: payload.token });
 			} catch (err) {

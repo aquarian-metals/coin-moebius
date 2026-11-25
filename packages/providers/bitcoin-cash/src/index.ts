@@ -80,6 +80,26 @@ function validateUri(uri: string): string {
 	return uri;
 }
 
+const LINK_FIELDS = new Set(['amount', 'label', 'message']);
+
+function assertLinkPaysWhatIsShown(uri: string, address: string, atomicAmount: string): void {
+	const [payee = '', query = ''] = uri.split(/\?(.*)/s);
+	const fields = new Map<string, string>();
+	let expected = true;
+	for (const part of query === '' ? [] : query.split('&')) {
+		const [key = '', value = ''] = part.split(/=(.*)/s);
+		if (fields.has(key) || !LINK_FIELDS.has(key)) expected = false;
+		fields.set(key, value);
+	}
+	const amount = fields.get('amount');
+	const shown = Number(formatAtomic(BigInt(atomicAmount)));
+	if (!expected || payee !== address || (amount !== undefined && Number(amount) !== shown)) {
+		throw new Error(
+			'coin-moebius/bitcoin-cash: wallet link does not match the address and amount shown',
+		);
+	}
+}
+
 async function fetchInstructions(
 	fetcher: typeof fetch,
 	endpoint: string,
@@ -113,6 +133,7 @@ async function fetchInstructions(
 		);
 	}
 	payload.uri = validateUri(payload.uri);
+	assertLinkPaysWhatIsShown(payload.uri, payload.address, payload.atomicAmount);
 	return payload as BitcoinCashInstructions;
 }
 

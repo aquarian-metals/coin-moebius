@@ -144,6 +144,23 @@ function validateUri(uri: string): string {
 	return uri;
 }
 
+const LINK_FIELDS = new Set(['tx_amount', 'tx_description', 'recipient_name']);
+
+function assertLinkPaysWhatIsShown(uri: string, address: string, xmrAmount: unknown): void {
+	const [payee = '', query = ''] = uri.slice('monero:'.length).split(/\?(.*)/s);
+	const fields = new Map<string, string>();
+	let expected = true;
+	for (const part of query === '' ? [] : query.split('&')) {
+		const [key = '', value = ''] = part.split(/=(.*)/s);
+		if (fields.has(key) || !LINK_FIELDS.has(key)) expected = false;
+		fields.set(key, value);
+	}
+	const amount = fields.get('tx_amount');
+	if (!expected || payee !== address || (amount !== undefined && Number(amount) !== xmrAmount)) {
+		throw new Error('coin-moebius/monero: wallet link does not match the address and amount shown');
+	}
+}
+
 async function fetchInstructions(
 	fetcher: typeof fetch,
 	endpoint: string,
@@ -174,6 +191,7 @@ async function fetchInstructions(
 		);
 	}
 	payload.uri = validateUri(payload.uri);
+	assertLinkPaysWhatIsShown(payload.uri, payload.address, payload.xmrAmount);
 	return payload as MoneroInstructions;
 }
 
@@ -223,11 +241,11 @@ function defaultRenderModal(
 
 	card.innerHTML = `
 		<h2 id="cm-monero-title" style="margin:0 0 8px;font-size:1.25rem;">Pay with Monero</h2>
-		<p style="margin:0 0 16px;color:#555;">Send <strong>exactly</strong> ${instructions.xmrAmount} XMR to the address below. Expires in ~${expiresIn} minutes.</p>
+		<p style="margin:0 0 16px;color:#555;">Send <strong>exactly</strong> ${escapeHtml(String(instructions.xmrAmount))} XMR to the address below. Expires in ~${expiresIn} minutes.</p>
 		<div style="background:#f5f5f5;padding:16px;border-radius:4px;margin-bottom:16px;font-family:ui-monospace,monospace;font-size:0.85rem;word-break:break-all;">
 			<div style="margin-bottom:8px;"><strong>Address:</strong></div>
 			<div style="user-select:all;">${escapeHtml(instructions.address)}</div>
-			<div style="margin-top:12px;"><strong>Amount:</strong> ${instructions.xmrAmount} XMR</div>
+			<div style="margin-top:12px;"><strong>Amount:</strong> ${escapeHtml(String(instructions.xmrAmount))} XMR</div>
 			<div style="margin-top:8px;"><strong>Wallet link:</strong></div>
 			<div><a href="${escapeHtml(instructions.uri)}" style="color:#1a73e8;word-break:break-all;">${escapeHtml(instructions.uri)}</a></div>
 		</div>

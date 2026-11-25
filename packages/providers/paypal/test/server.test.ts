@@ -495,6 +495,45 @@ describe('event → PaymentResult mapping (REST verifier, by event_type)', () =>
 		expect(result?.amount).toBe(7.77);
 	});
 
+	it('names the capture a refund belongs to, since the refund is filed under its own id', async () => {
+		const result = await verify({
+			event_type: 'PAYMENT.CAPTURE.REFUNDED',
+			resource_type: 'refund',
+			resource: {
+				id: '1U8538131N364651L',
+				status: 'COMPLETED',
+				custom_id: 'tx_QEyXfmy7WdHu1Og4',
+				amount: { value: '12.50', currency_code: 'USD' },
+				links: [
+					{
+						rel: 'self',
+						href: 'https://api.sandbox.paypal.com/v2/payments/refunds/1U8538131N364651L',
+					},
+					{
+						rel: 'up',
+						href: 'https://api.sandbox.paypal.com/v2/payments/captures/6AE67105J1214880F',
+					},
+				],
+			},
+		});
+		expect(result?.paymentId).toBe('1U8538131N364651L');
+		expect(result?.metadata.paypalCaptureId).toBe('6AE67105J1214880F');
+	});
+
+	it('files a dispute under its dispute id and names the capture it disputes', async () => {
+		const result = await verify({
+			event_type: 'CUSTOMER.DISPUTE.CREATED',
+			resource_type: 'dispute',
+			resource: {
+				dispute_id: 'PP-D-1',
+				dispute_amount: { value: '7.77', currency_code: 'USD' },
+				disputed_transactions: [{ seller_transaction_id: '6AE67105J1214880F' }],
+			},
+		});
+		expect(result?.paymentId).toBe('PP-D-1');
+		expect(result?.metadata.paypalCaptureId).toBe('6AE67105J1214880F');
+	});
+
 	it('returns null for CUSTOMER.DISPUTE.RESOLVED (log only)', async () => {
 		const result = await verify({
 			event_type: 'CUSTOMER.DISPUTE.RESOLVED',
@@ -754,6 +793,28 @@ describe('event → SubscriptionEvent mapping (PayPal billing events)', () => {
 		});
 		expect(result!.type).toBe('subscription.renewed');
 		expect(result!.subscriptionId).toBe('I-SUB-001');
+	});
+
+	it('reads a renewal in the shape PayPal really sends a sale: total, currency and state', async () => {
+		const result = await verifySub({
+			event_type: 'PAYMENT.SALE.COMPLETED',
+			resource_type: 'sale',
+			create_time: '2026-11-23T17:23:52Z',
+			resource: {
+				id: 'SALE-REAL-SHAPE',
+				state: 'completed',
+				billing_agreement_id: 'I-SUB-001',
+				amount: { total: '12.50', currency: 'EUR' },
+				payment_mode: 'INSTANT_TRANSFER',
+				parent_payment: 'PAY-17S8410768582940NKEE66EQ',
+			},
+		});
+		expect(result!.type).toBe('subscription.renewed');
+		expect(result!.subscriptionId).toBe('I-SUB-001');
+		expect(result!.amount).toBeCloseTo(12.5, 2);
+		expect(result!.currency).toBe('EUR');
+		expect(result!.status).toBe('active');
+		expect(result!.currentPeriodEnd).toBeNull();
 	});
 
 	it('does NOT treat PAYMENT.SALE.COMPLETED without billing_agreement_id as a subscription event', async () => {

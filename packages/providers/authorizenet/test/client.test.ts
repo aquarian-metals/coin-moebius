@@ -60,9 +60,12 @@ describe('createAuthorizenetProvider', () => {
 		const fetchStub = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
 			const bodyStr = typeof init?.body === 'string' ? init.body : '{}';
 			capturedBody = JSON.parse(bodyStr) as Record<string, unknown>;
-			return new Response(JSON.stringify({ url: 'https://x.example', token: 't' }), {
-				status: 200,
-			});
+			return new Response(
+				JSON.stringify({ url: 'https://test.authorize.net/payment/payment', token: 't' }),
+				{
+					status: 200,
+				},
+			);
 		});
 
 		const provider = createAuthorizenetProvider({
@@ -98,6 +101,40 @@ describe('createAuthorizenetProvider', () => {
 		expect(submitFormStub).not.toHaveBeenCalled();
 	});
 
+	it("sends the form only to Authorize.Net's own payment page", async () => {
+		const run = async (url: string) => {
+			const submitForm = vi.fn();
+			const onError = vi.fn();
+			const provider = createAuthorizenetProvider({
+				sessionEndpoint: 'http://test/checkout',
+				fetcher: vi.fn(
+					async () => new Response(JSON.stringify({ url, token: 't' }), { status: 200 }),
+				),
+				submitForm,
+			});
+			await provider.initiate(
+				{ productId: 'p', amount: 1, currency: 'USD' },
+				{ onSuccess: () => undefined, onError },
+			);
+			return { submitForm, onError };
+		};
+		for (const url of [
+			'https://collect.example/payment/payment',
+			'http://accept.authorize.net/payment/payment',
+			'https://accept.authorize.net.collect.example/payment/payment',
+		]) {
+			const refused = await run(url);
+			expect(refused.submitForm).not.toHaveBeenCalled();
+			expect((refused.onError.mock.calls[0][0] as Error).message).toContain('not allowed');
+		}
+		for (const url of [
+			'https://accept.authorize.net/payment/payment',
+			'https://test.authorize.net/payment/payment',
+		]) {
+			expect((await run(url)).submitForm).toHaveBeenCalledWith(url, { token: 't' });
+		}
+	});
+
 	it('calls onError when the response omits url or token', async () => {
 		const fetchStub = vi.fn(
 			async () => new Response(JSON.stringify({ url: 'https://x.example' }), { status: 200 }),
@@ -122,7 +159,10 @@ describe('createAuthorizenetProvider', () => {
 	it('falls back to an empty paymentId when the session response omits one', async () => {
 		const fetchStub = vi.fn(
 			async () =>
-				new Response(JSON.stringify({ url: 'https://x.example', token: 't' }), { status: 200 }),
+				new Response(
+					JSON.stringify({ url: 'https://test.authorize.net/payment/payment', token: 't' }),
+					{ status: 200 },
+				),
 		);
 		const onPending = vi.fn();
 		const provider = createAuthorizenetProvider({

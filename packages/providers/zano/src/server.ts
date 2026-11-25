@@ -276,6 +276,7 @@ export interface ZanoIndexer {
 }
 
 const PAYMENT_ID_PREFIX = 'zano_';
+const OLDER_PAYMENT_LOOKUPS = 20;
 
 // ============================================================================
 // Creator
@@ -511,6 +512,11 @@ export function createZanoIndexer(config: ZanoIndexerConfig): ZanoIndexer {
 	}
 
 	const requiredConfirmations = config.requiredConfirmations ?? 10;
+	if (!Number.isInteger(requiredConfirmations) || requiredConfirmations < 1) {
+		throw new Error(
+			`coin-moebius/zano: requiredConfirmations must be a whole number of at least 1, got ${requiredConfirmations}`,
+		);
+	}
 	const scanLookback = config.scanLookbackBlocks ?? 20;
 	const pageSize = config.pageSize ?? 50;
 	const maxPages = config.maxPages ?? 20;
@@ -637,8 +643,14 @@ export function createZanoIndexer(config: ZanoIndexerConfig): ZanoIndexer {
 			);
 		}
 
+		const recentAtomic = sumIncome(
+			txs.filter((tx) => confirmationsOf(tx, walletHeight) >= requiredConfirmations),
+			asset.assetId,
+		);
+		const observed = recentAtomic >= expectedAtomic ? txs : await withOlderPayments(record, txs);
+
 		const others = new Map<string, bigint>();
-		for (const tx of txs) {
+		for (const tx of observed) {
 			for (const income of tx.income) {
 				if (income.assetId !== asset.assetId) {
 					others.set(income.assetId, (others.get(income.assetId) ?? 0n) + income.amount);
@@ -650,7 +662,7 @@ export function createZanoIndexer(config: ZanoIndexerConfig): ZanoIndexer {
 			amountAtomic: amount.toString(),
 		}));
 
-		const all = txs.filter((tx) => tx.income.some((one) => one.assetId === asset.assetId));
+		const all = observed.filter((tx) => tx.income.some((one) => one.assetId === asset.assetId));
 		if (all.length === 0) {
 			if (otherAssets.length > 0) {
 				logger.warn('zano: payment received in an asset that was not invoiced', {
@@ -868,6 +880,40 @@ export function createZanoIndexer(config: ZanoIndexerConfig): ZanoIndexer {
 		return sent;
 	}
 
+	async function withOlderPayments(
+		record: PaymentRecord,
+		recent: ObservedTx[],
+	): Promise<ObservedTx[]> {
+		const reference = readStringMetadata(record, 'paymentReference');
+		if (!isPaymentId(reference)) return recent;
+		const reply = await rpc<{ payments?: unknown }>('get_payments', {
+			payment_id: reference,
+			allow_locked_transactions: false,
+		});
+		const known = new Set(recent.map((tx) => tx.txHash));
+		const older: ObservedTx[] = [];
+		for (const payment of readArray(reply, 'payments')) {
+			if (known.size - recent.length >= OLDER_PAYMENT_LOOKUPS) break;
+			const txHash = readString(payment, 'tx_hash').toLowerCase();
+			if (!/^[0-9a-f]{64}$/.test(txHash) || known.has(txHash)) continue;
+			known.add(txHash);
+			const found = await rpc<{ in?: unknown }>('search_for_transactions2', {
+				tx_id: txHash,
+				in: true,
+				out: false,
+				pool: false,
+				filter_by_height: false,
+			});
+			for (const transfer of readArray(found, 'in').map(readTransfer).filter(isPresent)) {
+				for (const group of transfer.byPaymentId) {
+					if (group.paymentId !== reference) continue;
+					older.push({ txHash: transfer.txHash, height: transfer.height, income: group.income });
+				}
+			}
+		}
+		return [...recent, ...older];
+	}
+
 	async function everReceived(paymentReference: string): Promise<boolean> {
 		if (!isPaymentId(paymentReference)) return false;
 		const reply = await rpc<{ payments?: unknown }>('get_payments', {
@@ -932,7 +978,7 @@ export function createZanoIndexer(config: ZanoIndexerConfig): ZanoIndexer {
 					signal: AbortSignal.timeout(requestTimeoutMs),
 				});
 				if (response.ok) return;
-				throw new Error(`webhook responded ${response.status}`);
+				throw new Error(await refusalOf(response));
 			} catch (err) {
 				lastError = err instanceof Error ? err : new Error(String(err));
 				if (attempt < retryConfig.maxAttempts) {
@@ -1512,6 +1558,17 @@ function toHex(bytes: Uint8Array): string {
 	let out = '';
 	for (const b of bytes) out += b.toString(16).padStart(2, '0');
 	return out;
+}
+
+async function refusalOf(response: Response): Promise<string> {
+	const plain = `webhook responded ${response.status}`;
+	const body: unknown = await response.json().catch(() => null);
+	if (typeof body !== 'object' || body === null || !('error' in body)) return plain;
+	const error = body.error;
+	if (typeof error !== 'object' || error === null || !('code' in error)) return plain;
+	return typeof error.code === 'string' && /^[A-Z_]{1,60}$/.test(error.code)
+		? `${plain} (${error.code})`
+		: plain;
 }
 
 function sleep(ms: number): Promise<void> {

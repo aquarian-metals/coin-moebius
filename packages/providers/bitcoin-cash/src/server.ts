@@ -359,12 +359,20 @@ export function createBitcoinCashIndexer(config: BitcoinCashIndexerConfig): Bitc
 		}
 
 		const confirmed = counted.filter((receipt) => receipt.confirmations >= requiredConfirmations);
-		const confirmedAtomic = sumAtomic(confirmed);
+		const seenAtomic = sumAtomic(confirmed);
+		const everAtomic = seenAtomic >= expectedAtomic ? seenAtomic : await confirmedEver(address);
+		const confirmedAtomic = everAtomic > seenAtomic ? everAtomic : seenAtomic;
 		let status: BitcoinCashWebhookPayload['status'] | null = null;
 		if (confirmedAtomic >= expectedAtomic) status = 'success';
 		else if (confirmed.length === counted.length) status = 'partial';
 
-		const observation = observe(paymentId, record, expectedAtomic, status ? confirmed : counted);
+		const observation = observe(
+			paymentId,
+			record,
+			expectedAtomic,
+			status ? confirmed : counted,
+			status ? confirmedAtomic : undefined,
+		);
 
 		if (!status) return await announceProgress(observation);
 
@@ -399,6 +407,7 @@ export function createBitcoinCashIndexer(config: BitcoinCashIndexerConfig): Bitc
 		record: PaymentRecord,
 		expectedAtomic: bigint,
 		receipts: Receipt[],
+		settledAtomic?: bigint,
 	): Observation {
 		const minedHeights = receipts
 			.map((receipt) => receipt.blockHeight)
@@ -407,7 +416,7 @@ export function createBitcoinCashIndexer(config: BitcoinCashIndexerConfig): Bitc
 			paymentId,
 			record,
 			expectedAtomic,
-			receivedAtomic: sumAtomic(receipts),
+			receivedAtomic: settledAtomic ?? sumAtomic(receipts),
 			confirmations: Math.min(...receipts.map((receipt) => receipt.confirmations)),
 			txHash: receipts[0]?.txid ?? null,
 			blockHeight: minedHeights.length > 0 ? Math.min(...minedHeights) : null,
@@ -553,6 +562,14 @@ export function createBitcoinCashIndexer(config: BitcoinCashIndexerConfig): Bitc
 		return typeof total === 'number' && total > 0;
 	}
 
+	async function confirmedEver(address: string): Promise<bigint> {
+		const total = await rpc<unknown>('getreceivedbyaddress', {
+			address,
+			minconf: requiredConfirmations,
+		});
+		return satoshisOf(total) ?? 0n;
+	}
+
 	async function claimAnnouncement(paymentId: string, status: PaymentStatus): Promise<boolean> {
 		if (config.store.markStatusAnnounced) {
 			return await config.store.markStatusAnnounced(paymentId, status);
@@ -597,7 +614,7 @@ export function createBitcoinCashIndexer(config: BitcoinCashIndexerConfig): Bitc
 					signal: AbortSignal.timeout(requestTimeoutMs),
 				});
 				if (response.ok) return;
-				throw new Error(`webhook responded ${response.status}`);
+				throw new Error(await refusalOf(response));
 			} catch (err) {
 				lastError = err instanceof Error ? err : new Error(String(err));
 				if (attempt < retryConfig.maxAttempts) {
@@ -1073,6 +1090,17 @@ function toHex(bytes: Uint8Array): string {
 	let out = '';
 	for (const b of bytes) out += b.toString(16).padStart(2, '0');
 	return out;
+}
+
+async function refusalOf(response: Response): Promise<string> {
+	const plain = `webhook responded ${response.status}`;
+	const body: unknown = await response.json().catch(() => null);
+	if (typeof body !== 'object' || body === null || !('error' in body)) return plain;
+	const error = body.error;
+	if (typeof error !== 'object' || error === null || !('code' in error)) return plain;
+	return typeof error.code === 'string' && /^[A-Z_]{1,60}$/.test(error.code)
+		? `${plain} (${error.code})`
+		: plain;
 }
 
 function sleep(ms: number): Promise<void> {

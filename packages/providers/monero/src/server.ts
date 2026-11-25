@@ -603,13 +603,18 @@ export function createMoneroIndexer(config: MoneroIndexerConfig): MoneroIndexer 
 			);
 		}
 
-		const confirmed = transfers.filter((t) => (t.confirmations ?? 0) >= requiredConfirmations);
+		const isConfirmed = (t: WalletTransfer) => (t.confirmations ?? 0) >= requiredConfirmations;
+		const seen =
+			sumAtomic(transfers.filter(isConfirmed)) >= expectedAtomic
+				? transfers
+				: await withOlderTransfers(record, transfers);
+		const confirmed = seen.filter(isConfirmed);
 		const confirmedAtomic = sumAtomic(confirmed);
 		let status: MoneroWebhookPayload['status'] | null = null;
 		if (confirmedAtomic >= expectedAtomic) status = 'success';
-		else if (confirmed.length === transfers.length) status = 'partial';
+		else if (confirmed.length === seen.length) status = 'partial';
 
-		const counted = status ? confirmed : transfers;
+		const counted = status ? confirmed : seen;
 		const receivedAtomic = sumAtomic(counted);
 		const minConfirmations = counted.reduce(
 			(min, t) => Math.min(min, t.confirmations ?? 0),
@@ -840,6 +845,23 @@ export function createMoneroIndexer(config: MoneroIndexerConfig): MoneroIndexer 
 		return records;
 	}
 
+	async function withOlderTransfers(
+		record: PaymentRecord,
+		recent: WalletTransfer[],
+	): Promise<WalletTransfer[]> {
+		const addressIndex = readNumberMetadata(record, 'addressIndex');
+		if (addressIndex === null) return recent;
+		const result = await walletRpc<{ in?: WalletTransfer[] }>(
+			config.walletRpcUrl,
+			'get_transfers',
+			{ in: true, account_index: accountIndex, subaddr_indices: [addressIndex] },
+			fetcher,
+			requestTimeoutMs,
+		);
+		const known = new Set(recent.map((t) => t.txid));
+		return [...recent, ...(result.in ?? []).filter((t) => !known.has(t.txid))];
+	}
+
 	async function everReceived(record: PaymentRecord): Promise<boolean> {
 		const addressIndex = readNumberMetadata(record, 'addressIndex');
 		if (addressIndex === null) return false;
@@ -912,7 +934,7 @@ export function createMoneroIndexer(config: MoneroIndexerConfig): MoneroIndexer 
 					signal: AbortSignal.timeout(requestTimeoutMs),
 				});
 				if (response.ok) return;
-				throw new Error(`webhook responded ${response.status}`);
+				throw new Error(await refusalOf(response));
 			} catch (err) {
 				lastError = err instanceof Error ? err : new Error(String(err));
 				if (attempt < retryConfig.maxAttempts) {
@@ -1298,6 +1320,17 @@ function toHex(bytes: Uint8Array): string {
 	let out = '';
 	for (const b of bytes) out += b.toString(16).padStart(2, '0');
 	return out;
+}
+
+async function refusalOf(response: Response): Promise<string> {
+	const plain = `webhook responded ${response.status}`;
+	const body: unknown = await response.json().catch(() => null);
+	if (typeof body !== 'object' || body === null || !('error' in body)) return plain;
+	const error = body.error;
+	if (typeof error !== 'object' || error === null || !('code' in error)) return plain;
+	return typeof error.code === 'string' && /^[A-Z_]{1,60}$/.test(error.code)
+		? `${plain} (${error.code})`
+		: plain;
 }
 
 function sleep(ms: number): Promise<void> {

@@ -144,10 +144,15 @@ function makeNode(chain = 'main') {
 					}));
 				return { transactions, removed: [], lastblock: hashAt(state.height) };
 			}
-			case 'getreceivedbyaddress':
+			case 'getreceivedbyaddress': {
+				const minconf = typeof named.minconf === 'number' ? named.minconf : 0;
 				return state.txs
-					.filter((tx) => tx.address === named.address && !tx.conflicted)
+					.filter(
+						(tx) =>
+							tx.address === named.address && !tx.conflicted && confirmationsOf(tx) >= minconf,
+					)
 					.reduce((sum, tx) => sum + tx.amount, 0);
+			}
 			default:
 				return { __error: `Method not found` };
 		}
@@ -885,6 +890,29 @@ describe('createBitcoinCashIndexer', () => {
 		expect(record?.amount).toBeCloseTo(0.0025, 10);
 	});
 
+	it('tick(): settles a split payment whose first part is older than the history it reads', async () => {
+		const ctx = await setup();
+		ctx.pay(ctx.second, { amount: 0.001, height: ctx.node.state.height - 5000 });
+		ctx.pay(ctx.second, { amount: 0.0015, hash: 'rest' });
+
+		await ctx.indexer.tick();
+		const payload = lastPayload(ctx);
+		expect(payload.status).toBe('success');
+		expect(payload.receivedAmountAtomic).toBe('250000');
+		expect((await ctx.store.get(ctx.second.paymentId))?.status).toBe('success');
+	});
+
+	it('tick(): still calls a split payment partial when the older part does not cover the rest', async () => {
+		const ctx = await setup();
+		ctx.pay(ctx.second, { amount: 0.0005, height: ctx.node.state.height - 5000 });
+		ctx.pay(ctx.second, { amount: 0.0015, hash: 'rest' });
+
+		await ctx.indexer.tick();
+		const payload = lastPayload(ctx);
+		expect(payload.status).toBe('partial');
+		expect(payload.receivedAmountAtomic).toBe('200000');
+	});
+
 	it('tick(): sums several payments to one address and gates on the slowest', async () => {
 		const ctx = await setup();
 		ctx.pay(ctx.second, { amount: 0.0015, height: ctx.node.state.height - 5 });
@@ -1163,6 +1191,31 @@ describe('createBitcoinCashIndexer', () => {
 		expect(result.errors.length).toBeGreaterThan(0);
 		expect(indexer.status().webhookErrorCount).toBe(1);
 		expect(indexer.status().lastError?.message).toContain('webhook responded 500');
+	});
+
+	it('tick(): carries the reason the receiver gave for refusing the webhook', async () => {
+		const ctx = await setup();
+		ctx.pay(ctx.first, { amount: 0.001 });
+		const indexer = createBitcoinCashIndexer({
+			rpcUrl: RPC_URL,
+			wallet: WALLET,
+			store: ctx.store,
+			webhookUrl: WEBHOOK_URL,
+			hmacSecret: SECRET,
+			fetcher: withWebhookCapture(ctx.node.fetcher, ctx.webhookCalls, () =>
+				Response.json(
+					{ error: { code: 'SIGNATURE_VERIFICATION_FAILED', message: 'bad signature' } },
+					{ status: 400 },
+				),
+			),
+			logger: silentLogger(),
+			webhookRetry: { maxAttempts: 1, initialBackoffMs: 1 },
+		});
+
+		await indexer.tick();
+		expect(indexer.status().lastError?.message).toContain(
+			'webhook responded 400 (SIGNATURE_VERIFICATION_FAILED)',
+		);
 	});
 
 	it('tick(): records lastError when the node itself fails', async () => {

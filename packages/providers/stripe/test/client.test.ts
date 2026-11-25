@@ -106,6 +106,26 @@ describe('createStripeProvider (browser)', () => {
 		expect(assignMock).toHaveBeenCalledWith('https://checkout.stripe.com/c/pay/cs_abc');
 	});
 
+	it('rejects a plain http redirect unless it points at this machine', async () => {
+		const run = async (url: string) => {
+			vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+				new Response(JSON.stringify({ url }), { status: 200 }),
+			);
+			const onError = vi.fn();
+			await createStripeProvider().initiate(
+				{ productId: 'p', amount: 1, currency: 'USD' },
+				{ onSuccess: vi.fn(), onError, onPending: vi.fn() },
+			);
+			return onError;
+		};
+		const remote = await run('http://pay.example/checkout');
+		expect((remote.mock.calls[0][0] as Error).message).toMatch(/not allowed/);
+		expect(assignMock).not.toHaveBeenCalled();
+		const local = await run('http://localhost:4242/checkout');
+		expect(local).not.toHaveBeenCalled();
+		expect(assignMock).toHaveBeenCalledWith('http://localhost:4242/checkout');
+	});
+
 	it('rejects redirect URLs with non-http(s) schemes', async () => {
 		vi.spyOn(globalThis, 'fetch').mockResolvedValue(
 			new Response(JSON.stringify({ url: 'javascript:alert(1)' }), { status: 200 }),

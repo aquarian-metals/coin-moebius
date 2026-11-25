@@ -101,7 +101,9 @@ export function createSquareProvider(config: SquareProviderConfig): PaymentProvi
 
 function assertSafeRedirectUrl(url: string): void {
 	const parsed = new URL(url);
-	if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+	const local =
+		parsed.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname);
+	if (parsed.protocol !== 'https:' && !local) {
 		throw new Error(`coin-moebius/square: redirect URL scheme "${parsed.protocol}" is not allowed`);
 	}
 }

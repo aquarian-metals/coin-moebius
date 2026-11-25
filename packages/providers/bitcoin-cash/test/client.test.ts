@@ -145,6 +145,18 @@ describe('createBitcoinCashProvider', () => {
 		);
 	});
 
+	it('refuses a wallet link that pays another address or asks another amount than the one shown', async () => {
+		expect(
+			await errorFor(sampleInstructions({ uri: 'bitcoincash:qsomeoneelse?amount=0.03998' })),
+		).toContain('does not match');
+		expect(await errorFor(sampleInstructions({ uri: `${ADDRESS}?amount=5` }))).toContain(
+			'does not match',
+		);
+		expect(
+			await errorFor(sampleInstructions({ uri: `${ADDRESS}?amount=0.03998&amount=5` })),
+		).toContain('does not match');
+	});
+
 	it('calls onError when the wallet link is not a bitcoincash: link', async () => {
 		expect(await errorFor(sampleInstructions({ uri: 'https://evil.example/pay' }))).toContain(
 			'not allowed',
@@ -195,7 +207,13 @@ describe('createBitcoinCashProvider', () => {
 
 	it('prints the amount from satoshis, never from the float beside it', async () => {
 		const provider = createBitcoinCashProvider({
-			fetcher: okFetch(sampleInstructions({ atomicAmount: '1', bchAmount: 1e-8 })),
+			fetcher: okFetch(
+				sampleInstructions({
+					atomicAmount: '1',
+					bchAmount: 1e-8,
+					uri: `${ADDRESS}?amount=0.00000001`,
+				}),
+			),
 		});
 
 		await provider.initiate({ productId: 'p', amount: 1, currency: 'USD' }, noCallbacks);

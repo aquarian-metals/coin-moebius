@@ -175,6 +175,31 @@ function validateUri(uri: string): string {
 	return uri;
 }
 
+const LINK_FIELDS = new Set(['action', 'address', 'amount', 'asset_id', 'comment']);
+
+function assertLinkPaysWhatIsShown(uri: string, shown: ZanoInstructions): void {
+	const fields = new Map<string, string>();
+	let expected = true;
+	for (const part of uri.slice('zano:'.length).split('&')) {
+		const [key = '', value = ''] = part.split(/=(.*)/s);
+		if (fields.has(key) || !LINK_FIELDS.has(key)) expected = false;
+		fields.set(key, value);
+	}
+	const amount = fields.get('amount');
+	const asset = fields.get('asset_id');
+	const shownAmount = Number(formatAtomic(BigInt(shown.atomicAmount), shown.decimalPoint));
+	if (
+		!expected ||
+		fields.get('address') !== shown.address ||
+		(amount !== undefined && Number(amount) !== shownAmount) ||
+		(asset !== undefined && asset !== shown.assetId)
+	) {
+		throw new Error(
+			'coin-moebius/zano: wallet link does not match the address, amount and asset shown',
+		);
+	}
+}
+
 async function fetchInstructions(
 	fetcher: typeof fetch,
 	endpoint: string,
@@ -216,6 +241,7 @@ async function fetchInstructions(
 		);
 	}
 	payload.uri = validateUri(payload.uri);
+	assertLinkPaysWhatIsShown(payload.uri, payload as ZanoInstructions);
 	return payload as ZanoInstructions;
 }
 

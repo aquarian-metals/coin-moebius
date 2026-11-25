@@ -132,6 +132,28 @@ describe('createDodoPaymentsProvider', () => {
 		expect(navigateStub).toHaveBeenCalledWith('https://x.example');
 	});
 
+	it('rejects a plain http redirect unless it points at this machine', async () => {
+		const run = async (url: string) => {
+			const onError = vi.fn();
+			const navigate = vi.fn();
+			const provider = createDodoPaymentsProvider({
+				checkoutEndpoint: 'http://test/checkout',
+				fetcher: vi.fn(async () => new Response(JSON.stringify({ url }), { status: 200 })),
+				navigate,
+			});
+			await provider.initiate(
+				{ productId: 'p', amount: 1, currency: 'USD' },
+				{ onSuccess: () => undefined, onError },
+			);
+			return { onError, navigate };
+		};
+		const remote = await run('http://pay.example/checkout');
+		expect(remote.navigate).not.toHaveBeenCalled();
+		expect((remote.onError.mock.calls[0][0] as Error).message).toContain('not allowed');
+		const local = await run('http://localhost:4242/checkout');
+		expect(local.navigate).toHaveBeenCalledWith('http://localhost:4242/checkout');
+	});
+
 	it('rejects redirect URLs with non-http(s) schemes', async () => {
 		const fetchStub = vi.fn(
 			async () => new Response(JSON.stringify({ url: 'javascript:alert(1)' }), { status: 200 }),
